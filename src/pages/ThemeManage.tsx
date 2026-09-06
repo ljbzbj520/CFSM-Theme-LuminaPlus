@@ -65,7 +65,9 @@ import {
 } from "@/utils/homeNodes";
 import {
   DEFAULT_HOMEPAGE_PING_TASK_ID,
-  HOMEPAGE_MULTI_PING_TASK_COUNT,
+  HOMEPAGE_MULTI_PING_MAX_COUNT,
+  HOMEPAGE_MULTI_PING_MIN_COUNT,
+  isHomepageMultiPingConfigured,
   normalizeHomepageMultiPingTaskIds,
   normalizeHomepagePingTaskBindings,
   type HomepagePingTaskBindings,
@@ -722,22 +724,54 @@ export function ThemeManage() {
     setExpandedTaskId((current) => (current === taskId ? null : taskId));
     setNodeSearch("");
   }, []);
-  const patchMultiPingTask = useCallback((slot: number, rawValue: string) => {
-    editVersionRef.current += 1;
-    setDraft((prev) => {
-      const nextIds = [...prev.homepageMultiPingTaskIds];
-      if (rawValue === "") {
-        nextIds.splice(slot, 1);
-      } else {
-        nextIds[slot] = Number(rawValue);
-      }
-      const homepageMultiPingTaskIds = normalizeHomepageMultiPingTaskIds(nextIds);
-      return JSON.stringify(homepageMultiPingTaskIds) ===
-        JSON.stringify(prev.homepageMultiPingTaskIds)
-        ? prev
-        : { ...prev, homepageMultiPingTaskIds };
+  // 三个改线路的回调共用一段收尾：归一化（去重、按上限截断）后，值没变就返回原草稿，
+  // 免得每次 onChange 都制造新对象让整页重渲染。
+  const commitMultiPingTaskIds = useCallback(
+    (mutate: (prev: number[]) => number[]) => {
+      editVersionRef.current += 1;
+      setDraft((prev) => {
+        const homepageMultiPingTaskIds = normalizeHomepageMultiPingTaskIds(
+          mutate([...prev.homepageMultiPingTaskIds]),
+        );
+        return JSON.stringify(homepageMultiPingTaskIds) ===
+          JSON.stringify(prev.homepageMultiPingTaskIds)
+          ? prev
+          : { ...prev, homepageMultiPingTaskIds };
+      });
+    },
+    [],
+  );
+  const patchMultiPingTask = useCallback(
+    (slot: number, rawValue: string) => {
+      commitMultiPingTaskIds((ids) => {
+        if (rawValue === "") {
+          ids.splice(slot, 1);
+        } else {
+          ids[slot] = Number(rawValue);
+        }
+        return ids;
+      });
+    },
+    [commitMultiPingTaskIds],
+  );
+  const removeMultiPingTask = useCallback(
+    (slot: number) => {
+      commitMultiPingTaskIds((ids) => {
+        ids.splice(slot, 1);
+        return ids;
+      });
+    },
+    [commitMultiPingTaskIds],
+  );
+  // 「添加线路」补的是第一条还没被选的线路，站长再按需改成别的；补不到就什么都不做
+  // （按钮那时本来就是禁用的）。
+  const addMultiPingTask = useCallback(() => {
+    commitMultiPingTaskIds((ids) => {
+      const nextTask = sortedTasksRef.current.find((task) => !ids.includes(task.id));
+      if (nextTask) ids.push(nextTask.id);
+      return ids;
     });
-  }, []);
+  }, [commitMultiPingTaskIds]);
 
   // CF-Server-Monitor 的探测点固定为四条线路，没有可配置的 ping 任务列表；
   // 名字则跟着后端的 custom_*_name 走（站长改过就显示他改的）。
@@ -779,6 +813,16 @@ export function ThemeManage() {
   }, []);
 
   const sortedTasks = useMemo(() => sortTasks(pingTasks), [pingTasks]);
+  // 「添加线路」要挑「第一条还没选的」，但那个回调声明在 sortedTasks 之前、且不该因为
+  // 线路名变化就重建（会连累整块表单重渲染），所以走 ref 读当前值。
+  const sortedTasksRef = useRef(sortedTasks);
+  sortedTasksRef.current = sortedTasks;
+  // 能选几条：后端给几条线路就最多几条，再被主题的上限夹一次（后端以后加线路，
+  // 抬 HOMEPAGE_MULTI_PING_MAX_COUNT 即可，这里不用动）。
+  const multiPingSlotLimit = Math.min(
+    HOMEPAGE_MULTI_PING_MAX_COUNT,
+    Math.max(sortedTasks.length, HOMEPAGE_MULTI_PING_MIN_COUNT),
+  );
   const sortedClients = useMemo(() => sortClients(adminClients ?? []), [adminClients]);
   const clientsById = useMemo(
     () => new Map(sortedClients.map((client) => [client.uuid, client])),
@@ -943,7 +987,7 @@ export function ThemeManage() {
     draft.costRateApiUrl.trim() !== "" && !isCostRateApiUrlValid(draft.costRateApiUrl.trim());
   const draftMultiPingInvalid =
     draft.enableHomepageMultiPing &&
-    draft.homepageMultiPingTaskIds.length !== HOMEPAGE_MULTI_PING_TASK_COUNT;
+    !isHomepageMultiPingConfigured(draft.homepageMultiPingTaskIds);
 
   // 由当前草稿拼出的设置 payload,保存请求和 dirty 判断都用它。草稿字段与设置同名,这里只做
   // 「编辑态 → 存储态」的换形与归一化;文本域(hiddenNodesText/costIgnoredText)和 ratingLabels
@@ -1256,7 +1300,7 @@ export function ThemeManage() {
               <dt>首页延迟</dt>
               <dd>
                 {draft.enableHomepageMultiPing
-                  ? `三网 ${draft.homepageMultiPingTaskIds.length} / 3`
+                  ? `多线路 ${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit}`
                   : `已指定线路 ${assignedNodeCount} / ${sortedClients.length}`}
               </dd>
             </div>
@@ -1825,8 +1869,9 @@ export function ThemeManage() {
           <>
             CF-Server-Monitor 的探测点固定为 {carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm} /{" "}
             {carrierNames.bd} 四条线路，每台节点都有。
-            默认开启三网模式：大卡片和小卡片统一展示指定的三条线路，迷你卡片与列表仍按各自的单线路显示。
-            关掉三网模式后走单线路模式，可为每个节点单独指定显示哪条线路，未指定的节点显示
+            默认开启多线路模式：大卡片和小卡片统一展示指定的若干条线路（条数自定，1~{multiPingSlotLimit} 条），
+            迷你卡片与列表仍按各自的单线路显示。
+            关掉多线路模式后走单线路模式，可为每个节点单独指定显示哪条线路，未指定的节点显示
             {carrierNames.ct}。
             {" "}
             四条线路的探测目标与探测方式都在后台的服务器编辑里配置，主题读不到。首页的延迟柱状图取自 /api/servers
@@ -1839,7 +1884,7 @@ export function ThemeManage() {
             {tasksLoading || clientsLoading
               ? "载入中"
               : draft.enableHomepageMultiPing
-                ? `三网 ${draft.homepageMultiPingTaskIds.length} / 3`
+                ? `多线路 ${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit}`
                 : `${sortedTasks.length} 条线路`}
           </div>
         }
@@ -1855,11 +1900,12 @@ export function ThemeManage() {
             <label className="flex items-start justify-between gap-4">
               <span className="min-w-0">
                 <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                  开启三网模式
+                  开启多线路模式
                 </span>
                 <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  默认开启（{carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm}）。开启后大卡片和小卡片统一显示下面三条线路；
-                  迷你卡片与列表继续按各自的单线路显示。关掉就回到单线路模式。
+                  默认开启，默认三条（{carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm}）。开启后大卡片和小卡片
+                  统一显示下面选中的线路，条数自定（1~{multiPingSlotLimit} 条）；迷你卡片与列表继续按各自的单线路显示。
+                  关掉就回到单线路模式。
                 </span>
               </span>
               <input
@@ -1868,7 +1914,7 @@ export function ThemeManage() {
                 disabled={
                   !draft.enableHomepageMultiPing &&
                   !tasksLoading &&
-                  sortedTasks.length < HOMEPAGE_MULTI_PING_TASK_COUNT
+                  sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
                 }
                 onChange={(event) =>
                   patch("enableHomepageMultiPing", event.target.checked)
@@ -1879,49 +1925,74 @@ export function ThemeManage() {
 
             {draft.enableHomepageMultiPing && (
               <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                <div className="grid gap-3 md:grid-cols-3">
-                  {Array.from(
-                    { length: HOMEPAGE_MULTI_PING_TASK_COUNT },
-                    (_, slot) => {
-                      const selectedTaskId =
-                        draft.homepageMultiPingTaskIds[slot];
-                      return (
-                        <label key={slot} className="min-w-0">
-                          <span className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]">
-                            线路 {slot + 1}
-                          </span>
-                          <select
-                            value={selectedTaskId ?? ""}
-                            onChange={(event) =>
-                              patchMultiPingTask(slot, event.target.value)
-                            }
-                            aria-label={`三网线路 ${slot + 1}`}
-                            className="surface-inset w-full px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
-                          >
-                            <option value="">选择 Ping 任务</option>
-                            {selectedTaskId != null &&
-                              !sortedTasks.some((task) => task.id === selectedTaskId) && (
-                                <option value={selectedTaskId}>
-                                  任务 #{selectedTaskId}（当前不可用）
-                                </option>
-                              )}
-                            {sortedTasks.map((task) => (
-                              <option
-                                key={task.id}
-                                value={task.id}
-                                disabled={
-                                  task.id !== selectedTaskId &&
-                                  draft.homepageMultiPingTaskIds.includes(task.id)
-                                }
-                              >
-                                {task.name || `任务 #${task.id}`}
-                              </option>
-                            ))}
-                          </select>
+                {/* 槽位数量由已选线路条数决定（不再固定三格）：每格一条，右上角的 × 删这一条，
+                    下面的「添加线路」补一条，上限是后端能提供的线路数。 */}
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  {draft.homepageMultiPingTaskIds.map((selectedTaskId, slot) => (
+                    <div key={`${slot}-${selectedTaskId}`} className="min-w-0">
+                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+                        <label
+                          htmlFor={`multi-ping-slot-${slot}`}
+                          className="block text-[11px] font-medium text-[var(--text-secondary)]"
+                        >
+                          线路 {slot + 1}
                         </label>
-                      );
-                    },
-                  )}
+                        <button
+                          type="button"
+                          onClick={() => removeMultiPingTask(slot)}
+                          disabled={
+                            draft.homepageMultiPingTaskIds.length <=
+                            HOMEPAGE_MULTI_PING_MIN_COUNT
+                          }
+                          aria-label={`移除线路 ${slot + 1}`}
+                          className="text-[11px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--text-tertiary)]"
+                        >
+                          移除
+                        </button>
+                      </div>
+                      <select
+                        id={`multi-ping-slot-${slot}`}
+                        value={selectedTaskId}
+                        onChange={(event) =>
+                          patchMultiPingTask(slot, event.target.value)
+                        }
+                        className="surface-inset w-full px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                      >
+                        {!sortedTasks.some((task) => task.id === selectedTaskId) && (
+                          <option value={selectedTaskId}>
+                            任务 #{selectedTaskId}（当前不可用）
+                          </option>
+                        )}
+                        {sortedTasks.map((task) => (
+                          <option
+                            key={task.id}
+                            value={task.id}
+                            disabled={
+                              task.id !== selectedTaskId &&
+                              draft.homepageMultiPingTaskIds.includes(task.id)
+                            }
+                          >
+                            {task.name || `任务 #${task.id}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={addMultiPingTask}
+                    disabled={
+                      draft.homepageMultiPingTaskIds.length >= multiPingSlotLimit
+                    }
+                    className="surface-inset px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
+                  >
+                    + 添加线路
+                  </button>
+                  <span className="text-[11px] text-[var(--text-tertiary)]">
+                    已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
+                  </span>
                 </div>
                 <p
                   className={clsx(
@@ -1933,8 +2004,8 @@ export function ThemeManage() {
                   role={draftMultiPingInvalid ? "alert" : undefined}
                 >
                   {draftMultiPingInvalid
-                    ? "请选满 3 个不同的 Ping 任务后再保存。"
-                    : "三项任务按这里的顺序显示；某项任务没有节点样本时保留该行并显示“无样本”。"}
+                    ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
+                    : "线路按这里的顺序显示；某条线路没有节点样本时保留该行并显示“无样本”。"}
                 </p>
               </div>
             )}
@@ -1955,7 +2026,7 @@ export function ThemeManage() {
               <span>首页绑定总数</span>
               <strong className="text-[var(--text-primary)]">
                 {draft.enableHomepageMultiPing
-                  ? `${draft.homepageMultiPingTaskIds.length} / 3 条线路`
+                  ? `${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit} 条线路`
                   : `${assignedNodeCount} / ${sortedClients.length}`}
               </strong>
             </div>
@@ -1963,7 +2034,7 @@ export function ThemeManage() {
 
           {draft.enableHomepageMultiPing && (
             <div className="text-[11px] text-[var(--text-tertiary)]">
-              下方单线路绑定继续用于迷你卡片和列表；大卡片与小卡片使用上方三项任务。
+              下方单线路绑定继续用于迷你卡片和列表；大卡片与小卡片使用上方选中的线路。
             </div>
           )}
 

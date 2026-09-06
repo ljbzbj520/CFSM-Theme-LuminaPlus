@@ -33,7 +33,7 @@ import { resolveTrafficUsage, trafficTypeLabel, type TrafficDisplay } from "@/ut
 import { resolveOsInfo } from "@/components/ui/OsLogo";
 import {
   hasHomepagePingTaskBinding,
-  HOMEPAGE_MULTI_PING_TASK_COUNT,
+  isHomepageMultiPingConfigured,
 } from "@/utils/pingTasks";
 
 interface NodeCardModelOptions {
@@ -71,7 +71,8 @@ export function useNodeCardModel(
     includeMultiPing &&
     showThreeNetDetails &&
     enableHomepageMultiPing &&
-    homepageMultiPingTaskIds.length === HOMEPAGE_MULTI_PING_TASK_COUNT;
+    // 条数不再写死三条：选 1~4 条都算开着，选 0 条才回退单线路。
+    isHomepageMultiPingConfigured(homepageMultiPingTaskIds);
   const windowPing = useNodePingOverview(uuid, !multiPingActive);
   const windowPingLines = useNodePingOverviewLines(uuid, multiPingActive);
   // 柱子来自后端窗口，数字用 WS 的实时值补一下 —— 理由见 `withLiveLatency`。

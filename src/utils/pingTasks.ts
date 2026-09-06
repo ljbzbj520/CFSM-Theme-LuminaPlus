@@ -1,5 +1,23 @@
 export type HomepagePingTaskBindings = Record<string, string[]>;
-export const HOMEPAGE_MULTI_PING_TASK_COUNT = 3;
+
+/**
+ * 多线路模式最多同时显示几条线路。后端目前固定四条探测线路（`CARRIER_TASKS`），这个数跟着它走
+ * —— 以后后端加线路，`pingTasks.test.ts` 里那条「和 CARRIER_TASKS 对齐」的断言会先失败，
+ * 提醒把这里一起抬上去（util 层不直接 import services，免得把适配层拖进纯函数的依赖里）。
+ */
+export const HOMEPAGE_MULTI_PING_MAX_COUNT = 4;
+
+/**
+ * 至少选几条才算配置好。**1 条也是合法配置**（v1.2.14 之前写死必须三条）：站长可能只关心
+ * 一条线路，但仍想要多线路模式那套「每条线各一行延迟 + 丢包」的排版。选 0 条才回退到
+ * 单线路模式（按节点各自的绑定显示一条）。
+ */
+export const HOMEPAGE_MULTI_PING_MIN_COUNT = 1;
+
+/** 多线路模式的任务选够了没有。首页消费方与设置页的校验共用这一条口径。 */
+export function isHomepageMultiPingConfigured(taskIds: readonly number[]): boolean {
+  return taskIds.length >= HOMEPAGE_MULTI_PING_MIN_COUNT;
+}
 
 /**
  * CF-Server-Monitor 的探测点是固定的四条线路（电信/联通/移动/BD），每台节点都具备，
@@ -8,7 +26,8 @@ export const HOMEPAGE_MULTI_PING_TASK_COUNT = 3;
 export const DEFAULT_HOMEPAGE_PING_TASK_ID = 1;
 
 /**
- * 三网模式的默认三条线路：电信 / 联通 / 移动（BD 不在其中）。
+ * 多线路模式没配过时的默认：三条线路（电信 / 联通 / 移动，BD 不在其中）—— 沿用「三网」时代的
+ * 口径，存量站点升级后看到的东西不变。条数本身可由站长在设置页改成 1~{@link HOMEPAGE_MULTI_PING_MAX_COUNT} 条。
  * 线路 id 由 CARRIER_TASKS 固定，不会因站点而异，所以可以硬编码成默认值。
  */
 export const DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS: readonly number[] = [1, 2, 3];
@@ -34,7 +53,7 @@ export function normalizeHomepageMultiPingTaskIds(value: unknown): number[] {
           : null;
     if (taskId == null || normalized.includes(taskId)) continue;
     normalized.push(taskId);
-    if (normalized.length === HOMEPAGE_MULTI_PING_TASK_COUNT) break;
+    if (normalized.length === HOMEPAGE_MULTI_PING_MAX_COUNT) break;
   }
   return normalized;
 }
@@ -111,7 +130,7 @@ export function resolveHomepagePingTaskIdsByClient(
   const selectedTaskIds = normalizeHomepageMultiPingTaskIds(multiTaskIds);
   const selectedTaskIdsByClient = new Map<string, number[]>();
 
-  if (selectedTaskIds.length === HOMEPAGE_MULTI_PING_TASK_COUNT) {
+  if (isHomepageMultiPingConfigured(selectedTaskIds)) {
     for (const uuid of clientUuids) {
       if (uuid) selectedTaskIdsByClient.set(uuid, selectedTaskIds);
     }
@@ -135,8 +154,7 @@ export function resolveHomepagePingSelections(
 ) {
   const normalizedMultiTaskIds =
     normalizeHomepageMultiPingTaskIds(multiTaskIds);
-  const useMultiPing =
-    normalizedMultiTaskIds.length === HOMEPAGE_MULTI_PING_TASK_COUNT;
+  const useMultiPing = isHomepageMultiPingConfigured(normalizedMultiTaskIds);
   const singleTaskIdsByClient = useMultiPing
     ? new Map<string, number[]>()
     : resolveHomepagePingTaskIdsByClient(clientUuids, bindings);

@@ -163,8 +163,9 @@ function normalizeHomeSortDefault(
 export function normalizeThemeSettings(
   settings: (ThemeSettings & Record<string, unknown>) | null | undefined,
 ): ResolvedThemeSettings {
-  // 没配过就给电信/联通/移动三条线路：三网模式默认开着，缺了任务 id 会静默退回单线路，
-  // 站长会以为开关没生效。显式配过（哪怕只选了两条）就尊重原值，让设置页能提示补齐。
+  // 没配过就给电信/联通/移动三条线路：多线路模式默认开着，一条任务 id 都没有会静默退回
+  // 单线路，站长会以为开关没生效。显式配过就尊重原值 —— 条数由站长定（1~4 条都算配好了），
+  // 只有空数组才回退单线路。
   const homepageMultiPingTaskIds =
     settings?.homepageMultiPingTaskIds == null
       ? [...DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS]
@@ -182,8 +183,9 @@ export function normalizeThemeSettings(
     enableAdminButton: enabledUnlessFalse(settings?.enableAdminButton),
     showPingChart: enabledUnlessFalse(settings?.showPingChart),
     homepagePingBindings: normalizeHomepagePingTaskBindings(settings?.homepagePingBindings),
-    // 默认开：多数站点想要的就是三网对比。保留开关原值（含显式 false），让管理页能呈现
-    // 并修复不完整配置；首页消费方仍只在任务恰好为三项时启用。
+    // 默认开：多数站点想要的就是多条线路对比（默认给三条，沿用「三网」时代的口径）。
+    // 保留开关原值（含显式 false），让管理页能呈现并修复空配置；首页消费方在任务
+    // 至少一条时启用（见 isHomepageMultiPingConfigured）。
     enableHomepageMultiPing: enabledUnlessFalse(settings?.enableHomepageMultiPing),
     homepageMultiPingTaskIds,
     // 默认关闭(需手动开启):给访客展示的是模拟数据,必须由站长显式决定。

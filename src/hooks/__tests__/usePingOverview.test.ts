@@ -424,9 +424,15 @@ describe("resolveHomepagePingRequestMode", () => {
     expect(resolveHomepagePingRequestMode("list", true, [1, 2, 3])).toBe("single");
   });
 
-  it("stays single when multi ping is off or incomplete", () => {
+  it("stays single only when multi ping is off or has no task at all", () => {
     expect(resolveHomepagePingRequestMode("large", false, [1, 2, 3])).toBe("single");
-    expect(resolveHomepagePingRequestMode("large", true, [1, 2])).toBe("single");
+    expect(resolveHomepagePingRequestMode("large", true, [])).toBe("single");
+  });
+
+  it("goes multi for any non-empty selection (1~4 lines, no longer exactly 3)", () => {
+    expect(resolveHomepagePingRequestMode("large", true, [1])).toBe("multi");
+    expect(resolveHomepagePingRequestMode("large", true, [1, 2])).toBe("multi");
+    expect(resolveHomepagePingRequestMode("compact", true, [1, 2, 3, 4])).toBe("multi");
   });
 });
 

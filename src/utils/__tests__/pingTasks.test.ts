@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { CARRIER_TASKS } from "@/services/cfsm/mappers";
 import {
+  HOMEPAGE_MULTI_PING_MAX_COUNT,
+  isHomepageMultiPingConfigured,
   normalizeHomepageMultiPingTaskIds,
   invertHomepagePingTaskBindings,
   hasHomepagePingTaskBinding,
@@ -57,8 +60,30 @@ describe("homepage ping task bindings", () => {
     expect(hasHomepagePingTaskBinding("node-c", bindings)).toBe(false);
   });
 
-  it("normalizes the global three-task selection in display order", () => {
-    expect(normalizeHomepageMultiPingTaskIds(["3", 1, 3, 2, 4])).toEqual([3, 1, 2]);
+  it("normalizes the global selection in display order, capped at the max line count", () => {
+    // 去重、保序、按上限截断。上限是四条（后端就四条线路），不再是写死的三条。
+    expect(normalizeHomepageMultiPingTaskIds(["3", 1, 3, 2, 4])).toEqual([3, 1, 2, 4]);
+    expect(normalizeHomepageMultiPingTaskIds([4, 3, 2, 1, 5])).toEqual([4, 3, 2, 1]);
+  });
+
+  it("treats any non-empty selection as configured (1 line is valid)", () => {
+    expect(isHomepageMultiPingConfigured([1])).toBe(true);
+    expect(isHomepageMultiPingConfigured([1, 2, 3, 4])).toBe(true);
+    expect(isHomepageMultiPingConfigured([])).toBe(false);
+  });
+
+  it("keeps the max line count aligned with the carrier lines the backend actually has", () => {
+    // 后端以后加线路（CARRIER_TASKS 变长），这条会先失败，提醒把上限一起抬上去。
+    expect(HOMEPAGE_MULTI_PING_MAX_COUNT).toBe(CARRIER_TASKS.length);
+  });
+
+  it("uses the selected lines for every node whatever the count", () => {
+    expect(
+      resolveHomepagePingTaskIdsByClient(["node-a"], { "8": ["node-a"] }, [2]),
+    ).toEqual(new Map([["node-a", [2]]]));
+    expect(
+      resolveHomepagePingTaskIdsByClient(["node-a"], {}, [4, 1]),
+    ).toEqual(new Map([["node-a", [4, 1]]]));
   });
 
   it("uses the same three global tasks for every node and otherwise keeps single bindings", () => {

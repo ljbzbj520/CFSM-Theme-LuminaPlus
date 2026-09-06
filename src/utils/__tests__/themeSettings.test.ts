@@ -25,14 +25,14 @@ describe("normalizeThemeSettings", () => {
   });
 
   it("normalizes homepage multi-ping tasks while preserving an enabled draft for repair", () => {
-    // 默认开三网，并补上电信/联通/移动 —— 少了任务 id 会静默退回单线路。
+    // 默认开多线路模式，并补上电信/联通/移动三条 —— 一条任务 id 都没有会静默退回单线路。
     const untouched = normalizeThemeSettings({});
     expect(untouched.enableHomepageMultiPing).toBe(true);
     expect(untouched.homepageMultiPingTaskIds).toEqual([1, 2, 3]);
     expect(normalizeThemeSettings({ enableHomepageMultiPing: false }).enableHomepageMultiPing).toBe(
       false,
     );
-    // 显式配过就尊重原值（哪怕不足三条），让设置页提示补齐而不是被默认值盖掉。
+    // 显式配过就尊重原值（空数组也是），让设置页提示补齐而不是被默认值盖掉。
     expect(
       normalizeThemeSettings({ homepageMultiPingTaskIds: [] }).homepageMultiPingTaskIds,
     ).toEqual([]);
@@ -48,7 +48,8 @@ describe("normalizeThemeSettings", () => {
       homepageMultiPingTaskIds: [3, 1, 3, 2, 4],
     });
     expect(resolved.enableHomepageMultiPing).toBe(true);
-    expect(resolved.homepageMultiPingTaskIds).toEqual([3, 1, 2]);
+    // 去重后正好四条，都保留 —— 上限是四条，不再截到三条。
+    expect(resolved.homepageMultiPingTaskIds).toEqual([3, 1, 2, 4]);
   });
 
   it("defaults home sort to weight ascending and falls back to a field's natural direction", () => {

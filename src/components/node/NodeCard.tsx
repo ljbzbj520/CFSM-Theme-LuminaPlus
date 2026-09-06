@@ -21,7 +21,6 @@ import { usePreferences } from "@/hooks/usePreferences";
 import { useMetricColorsVersion } from "@/hooks/useMetricColors";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { formatBytes } from "@/utils/format";
-import { HOMEPAGE_MULTI_PING_TASK_COUNT } from "@/utils/pingTasks";
 import {
   speedRateColor,
   trafficQuotaSegmentColor,
@@ -154,7 +153,7 @@ export const NodeCard = memo(function NodeCard({
             </div>
           )}
 
-          {homepagePingLines.length === HOMEPAGE_MULTI_PING_TASK_COUNT ? (
+          {homepagePingLines.length > 0 ? (
             <MultiPingStatus
               lines={homepagePingLines}
               density="large"

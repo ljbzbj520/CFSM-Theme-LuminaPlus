@@ -22,7 +22,6 @@ import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { HOMEPAGE_PING_BUCKET_COUNT } from "@/hooks/usePingOverview";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { formatBytes } from "@/utils/format";
-import { HOMEPAGE_MULTI_PING_TASK_COUNT } from "@/utils/pingTasks";
 import { speedRateColor, speedRateColorFromBytes } from "@/utils/metricTone";
 import { supportsFineHover } from "@/utils/mediaQuery";
 import { formatHealthBucketTooltip } from "./pingBucketText";
@@ -758,7 +757,7 @@ export const CompactNodeCard = memo(function CompactNodeCard({
         renewalPrice={renewalPrice}
       />
       <CompactTrafficBar traffic={traffic} uptimeLabel={uptimeLabel} />
-      {homepagePingLines.length === HOMEPAGE_MULTI_PING_TASK_COUNT ? (
+      {homepagePingLines.length > 0 ? (
         <MultiPingStatus
           lines={homepagePingLines}
           density="compact"

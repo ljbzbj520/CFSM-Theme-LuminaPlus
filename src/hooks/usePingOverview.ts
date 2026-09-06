@@ -26,8 +26,8 @@ import type {
 import { resolvePingSampleCounts } from "@/utils/pingMetrics";
 import {
   DEFAULT_HOMEPAGE_PING_TASK_ID,
-  HOMEPAGE_MULTI_PING_TASK_COUNT,
   invertHomepagePingTaskBindings,
+  isHomepageMultiPingConfigured,
 } from "@/utils/pingTasks";
 import type { NodeViewMode } from "@/utils/themeSettings";
 
@@ -102,7 +102,7 @@ export function resolveHomepagePingRequestMode(
 ): HomepagePingRequestMode {
   return (viewMode === "large" || viewMode === "compact") &&
     multiPingEnabled &&
-    multiTaskIds.length === HOMEPAGE_MULTI_PING_TASK_COUNT
+    isHomepageMultiPingConfigured(multiTaskIds)
     ? "multi"
     : "single";
 }
