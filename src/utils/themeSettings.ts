@@ -18,6 +18,8 @@ import {
 } from "@/utils/homeSort";
 import {
   DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS,
+  DEFAULT_HOMEPAGE_PING_TASK_ID,
+  resolveDefaultHomepagePingTaskId,
   normalizeHomepageMultiPingTaskIds,
   normalizeHomepagePingTaskBindings,
   type HomepagePingTaskBindings,
@@ -33,6 +35,7 @@ export interface ResolvedThemeSettings {
   enableAdminButton: boolean;
   showPingChart: boolean;
   homepagePingBindings: HomepagePingTaskBindings;
+  homepageDefaultPingTaskId: number;
   enableHomepageMultiPing: boolean;
   homepageMultiPingTaskIds: number[];
   fakePingForUnbound: boolean;
@@ -72,6 +75,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   enableAdminButton: true,
   showPingChart: true,
   homepagePingBindings: {},
+  homepageDefaultPingTaskId: DEFAULT_HOMEPAGE_PING_TASK_ID,
   enableHomepageMultiPing: true,
   homepageMultiPingTaskIds: [...DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS],
   fakePingForUnbound: false,
@@ -183,6 +187,11 @@ export function normalizeThemeSettings(
     enableAdminButton: enabledUnlessFalse(settings?.enableAdminButton),
     showPingChart: enabledUnlessFalse(settings?.showPingChart),
     homepagePingBindings: normalizeHomepagePingTaskBindings(settings?.homepagePingBindings),
+    // 单线路模式下「没单独绑过的节点显示哪条」。写死电信时，全站绑联通的站点每加一台新节点
+    // 就多一条电信，站长还得记得回来手动绑（v1.2.14 修）。
+    homepageDefaultPingTaskId: resolveDefaultHomepagePingTaskId(
+      settings?.homepageDefaultPingTaskId,
+    ),
     // 默认开：多数站点想要的就是多条线路对比（默认给三条，沿用「三网」时代的口径）。
     // 保留开关原值（含显式 false），让管理页能呈现并修复空配置；首页消费方在任务
     // 至少一条时启用（见 isHomepageMultiPingConfigured）。

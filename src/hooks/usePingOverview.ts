@@ -25,8 +25,8 @@ import type {
 } from "@/types/cfsm";
 import { resolvePingSampleCounts } from "@/utils/pingMetrics";
 import {
-  DEFAULT_HOMEPAGE_PING_TASK_ID,
   invertHomepagePingTaskBindings,
+  resolveDefaultHomepagePingTaskId,
   isHomepageMultiPingConfigured,
 } from "@/utils/pingTasks";
 import type { NodeViewMode } from "@/utils/themeSettings";
@@ -290,13 +290,19 @@ export function withLiveLatency(
   return { ...item, lastValue: value };
 }
 
-/** 节点在单线路模式下显示哪条线路：设置里指定过就用指定的，否则默认电信。 */
+/**
+ * 节点在单线路模式下显示哪条线路：单独绑过就用绑的，否则用站点的「默认线路」设置
+ * （`homepageDefaultPingTaskId`，站长没设过才是电信）。
+ */
 export function useSelectedTaskId(uuid: string): number {
-  const { homepagePingBindings } = useThemeSettings();
+  const { homepagePingBindings, homepageDefaultPingTaskId } = useThemeSettings();
   return useMemo(() => {
     const byClient = invertHomepagePingTaskBindings(homepagePingBindings);
-    return byClient.get(uuid) ?? DEFAULT_HOMEPAGE_PING_TASK_ID;
-  }, [homepagePingBindings, uuid]);
+    return (
+      byClient.get(uuid) ??
+      resolveDefaultHomepagePingTaskId(homepageDefaultPingTaskId)
+    );
+  }, [homepageDefaultPingTaskId, homepagePingBindings, uuid]);
 }
 
 /**

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CARRIER_TASKS } from "@/services/cfsm/mappers";
 import {
+  DEFAULT_HOMEPAGE_PING_TASK_ID,
   HOMEPAGE_MULTI_PING_MAX_COUNT,
+  resolveDefaultHomepagePingTaskId,
   isHomepageMultiPingConfigured,
   normalizeHomepageMultiPingTaskIds,
   invertHomepagePingTaskBindings,
@@ -75,6 +77,24 @@ describe("homepage ping task bindings", () => {
   it("keeps the max line count aligned with the carrier lines the backend actually has", () => {
     // 后端以后加线路（CARRIER_TASKS 变长），这条会先失败，提醒把上限一起抬上去。
     expect(HOMEPAGE_MULTI_PING_MAX_COUNT).toBe(CARRIER_TASKS.length);
+  });
+
+  it("falls unbound nodes back to the site's default line, not a hardcoded 电信", () => {
+    // 全站绑联通(2)的站点新加一台节点：默认线路设成 2 时它就跟着走 2，而不是写死的 1。
+    expect(
+      resolveHomepagePingTaskIdsByClient(["new-node"], { "2": ["old-node"] }, [], 2),
+    ).toEqual(new Map([["new-node", [2]]]));
+    // 单独绑过的节点仍以绑定为准，默认线路管不着它。
+    expect(
+      resolveHomepagePingTaskIdsByClient(["old-node"], { "3": ["old-node"] }, [], 2),
+    ).toEqual(new Map([["old-node", [3]]]));
+  });
+
+  it("keeps 电信 as the fallback when the default line is unset or invalid", () => {
+    for (const bad of [undefined, null, 0, -1, 1.5, "2", Number.NaN]) {
+      expect(resolveDefaultHomepagePingTaskId(bad)).toBe(DEFAULT_HOMEPAGE_PING_TASK_ID);
+    }
+    expect(resolveDefaultHomepagePingTaskId(4)).toBe(4);
   });
 
   it("uses the selected lines for every node whatever the count", () => {

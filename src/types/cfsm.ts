@@ -415,6 +415,7 @@ export interface ThemeSettings {
   enableAdminButton?: boolean;
   showPingChart?: boolean;
   homepagePingBindings?: Record<string, string[]>;
+  homepageDefaultPingTaskId?: number;
   enableHomepageMultiPing?: boolean;
   homepageMultiPingTaskIds?: number[];
   fakePingForUnbound?: boolean;

@@ -52,6 +52,22 @@ describe("normalizeThemeSettings", () => {
     expect(resolved.homepageMultiPingTaskIds).toEqual([3, 1, 2, 4]);
   });
 
+  it("keeps the homepage default line configurable, falling back to 电信", () => {
+    expect(normalizeThemeSettings({}).homepageDefaultPingTaskId).toBe(1);
+    expect(
+      normalizeThemeSettings({ homepageDefaultPingTaskId: 2 }).homepageDefaultPingTaskId,
+    ).toBe(2);
+    // 存坏了（0 / 负数 / 小数 / 字符串）也不能让首页失去线路，退回电信。
+    expect(
+      normalizeThemeSettings({ homepageDefaultPingTaskId: 0 }).homepageDefaultPingTaskId,
+    ).toBe(1);
+    expect(
+      normalizeThemeSettings({
+        homepageDefaultPingTaskId: "3" as unknown as number,
+      }).homepageDefaultPingTaskId,
+    ).toBe(1);
+  });
+
   it("defaults home sort to weight ascending and falls back to a field's natural direction", () => {
     const base = normalizeThemeSettings({});
     expect(base.enableHomeSort).toBe(true);

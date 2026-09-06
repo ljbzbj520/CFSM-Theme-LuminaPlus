@@ -25,6 +25,13 @@ export function isHomepageMultiPingConfigured(taskIds: readonly number[]): boole
  */
 export const DEFAULT_HOMEPAGE_PING_TASK_ID = 1;
 
+/** 站长选的「默认线路」有效才用它，否则退回 {@link DEFAULT_HOMEPAGE_PING_TASK_ID}。 */
+export function resolveDefaultHomepagePingTaskId(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : DEFAULT_HOMEPAGE_PING_TASK_ID;
+}
+
 /**
  * 多线路模式没配过时的默认：三条线路（电信 / 联通 / 移动，BD 不在其中）—— 沿用「三网」时代的
  * 口径，存量站点升级后看到的东西不变。条数本身可由站长在设置页改成 1~{@link HOMEPAGE_MULTI_PING_MAX_COUNT} 条。
@@ -126,6 +133,7 @@ export function resolveHomepagePingTaskIdsByClient(
   clientUuids: string[],
   bindings: HomepagePingTaskBindings,
   multiTaskIds: number[] = [],
+  defaultTaskId: number = DEFAULT_HOMEPAGE_PING_TASK_ID,
 ): Map<string, number[]> {
   const selectedTaskIds = normalizeHomepageMultiPingTaskIds(multiTaskIds);
   const selectedTaskIdsByClient = new Map<string, number[]>();
@@ -141,7 +149,9 @@ export function resolveHomepagePingTaskIdsByClient(
   for (const uuid of clientUuids) {
     if (!uuid) continue;
     selectedTaskIdsByClient.set(uuid, [
-      singleTaskByClient.get(uuid) ?? DEFAULT_HOMEPAGE_PING_TASK_ID,
+      // 没单独绑过的节点走站点的「默认线路」—— 写死电信会让「全站都绑联通」的站点
+      // 每加一台新节点就冒出一条电信（站长得记得回来手动绑，v1.2.14 之前就是这样）。
+      singleTaskByClient.get(uuid) ?? resolveDefaultHomepagePingTaskId(defaultTaskId),
     ]);
   }
   return selectedTaskIdsByClient;
@@ -151,13 +161,14 @@ export function resolveHomepagePingSelections(
   clientUuids: string[],
   bindings: HomepagePingTaskBindings,
   multiTaskIds: number[] = [],
+  defaultTaskId: number = DEFAULT_HOMEPAGE_PING_TASK_ID,
 ) {
   const normalizedMultiTaskIds =
     normalizeHomepageMultiPingTaskIds(multiTaskIds);
   const useMultiPing = isHomepageMultiPingConfigured(normalizedMultiTaskIds);
   const singleTaskIdsByClient = useMultiPing
     ? new Map<string, number[]>()
-    : resolveHomepagePingTaskIdsByClient(clientUuids, bindings);
+    : resolveHomepagePingTaskIdsByClient(clientUuids, bindings, [], defaultTaskId);
   const multiTaskIdsByClient = useMultiPing
     ? resolveHomepagePingTaskIdsByClient(
         clientUuids,

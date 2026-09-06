@@ -64,7 +64,6 @@ import {
   sortHomeGroupOptions,
 } from "@/utils/homeNodes";
 import {
-  DEFAULT_HOMEPAGE_PING_TASK_ID,
   HOMEPAGE_MULTI_PING_MAX_COUNT,
   HOMEPAGE_MULTI_PING_MIN_COUNT,
   isHomepageMultiPingConfigured,
@@ -255,6 +254,7 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
     desktopNodeViewMode: settings.desktopNodeViewMode,
     mobileNodeViewMode: settings.mobileNodeViewMode,
     homepagePingBindings: settings.homepagePingBindings,
+    homepageDefaultPingTaskId: settings.homepageDefaultPingTaskId,
     enableHomepageMultiPing: settings.enableHomepageMultiPing,
     homepageMultiPingTaskIds: settings.homepageMultiPingTaskIds,
     fakePingForUnbound: settings.fakePingForUnbound,
@@ -379,6 +379,7 @@ const EMPTY_ADMIN_CLIENTS: NodeInfo[] = [];
 // tasks×clients 复选网格只在绑定/搜索/展开变化时重算。
 const TaskBindingSection = memo(function TaskBindingSection({
   task,
+  defaultTaskId,
   assigned,
   expanded,
   clientsById,
@@ -390,6 +391,8 @@ const TaskBindingSection = memo(function TaskBindingSection({
   onPatchBindings,
 }: {
   task: PingTask;
+  /** 站点当前的「默认线路」，用来给对应那张卡片打标。 */
+  defaultTaskId: number;
   assigned: string[];
   expanded: boolean;
   clientsById: Map<string, NodeInfo>;
@@ -403,9 +406,9 @@ const TaskBindingSection = memo(function TaskBindingSection({
   ) => void;
 }) {
   const assignedSummary = summarizeNodes(assigned, clientsById);
-  // 探测点是后端固定的四条线路，没绑定的节点会落到默认线路（电信），这里标出来免得站长
+  // 探测点是后端固定的四条线路，没绑定的节点会落到站长选的「默认线路」，这里标出来免得站长
   // 以为「0 个节点」就是没人用它。
-  const isDefaultTask = task.id === DEFAULT_HOMEPAGE_PING_TASK_ID;
+  const isDefaultTask = task.id === defaultTaskId;
   // 过滤只有展开的任务需要;收起的卡片跳过,搜索输入不再对每个任务做 O(clients) 扫描。
   const selectableVisibleClients = expanded
     ? visibleClients.filter((client) => {
@@ -2011,6 +2014,43 @@ export function ThemeManage() {
             )}
           </div>
 
+          {/* 单线路模式的兜底线路。写死电信时，全站绑联通的站点每加一台节点就冒出一条电信，
+              站长得记得回来手动绑 —— 这个下拉就是为了免掉那一步。 */}
+          <div className="surface-inset px-4 py-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <label htmlFor="homepage-default-ping-task" className="min-w-0">
+                <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                  默认线路
+                </span>
+                <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                  单线路模式下，没在下面单独指定线路的节点都显示这条 —— 新加的节点也会自动跟着它，
+                  不用再回来一台台绑。迷你卡片与列表始终按单线路显示，所以这项对它们一直有效。
+                </span>
+              </label>
+              <select
+                id="homepage-default-ping-task"
+                value={draft.homepageDefaultPingTaskId}
+                onChange={(event) =>
+                  patch("homepageDefaultPingTaskId", Number(event.target.value))
+                }
+                className="surface-inset w-full max-w-[240px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+              >
+                {!sortedTasks.some(
+                  (task) => task.id === draft.homepageDefaultPingTaskId,
+                ) && (
+                  <option value={draft.homepageDefaultPingTaskId}>
+                    任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                  </option>
+                )}
+                {sortedTasks.map((task) => (
+                  <option key={task.id} value={task.id}>
+                    {task.name || `任务 #${task.id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
             <label className="surface-inset flex items-center gap-2 px-3 py-2">
               <Search size={14} className="text-[var(--text-tertiary)]" />
@@ -2073,6 +2113,7 @@ export function ThemeManage() {
                 <TaskBindingSection
                   key={task.id}
                   task={task}
+                  defaultTaskId={draft.homepageDefaultPingTaskId}
                   assigned={
                     draft.homepagePingBindings[String(task.id)] ?? EMPTY_ASSIGNED_CLIENTS
                   }
