@@ -71,7 +71,8 @@ React 19 + TypeScript + Vite 8(rolldown) + Tailwind 4 + TanStack Query + uPlot +
 2. `git push origin HEAD:preview` → CI 发布到 `dist-preview` 分支 → **交给用户验收**
 3. 用户确认后再 `git push origin main` → CI 发布到 `dist`
 
-未经用户确认不要推 `main`。Workers 对分支地址缓存约 1 小时，验收看到旧版就用
+未经用户确认不要推 `main`。**主题商店里的版本登记由站长自己更新，代码这边推完 `main` 就算完。**
+Workers 对分支地址缓存约 1 小时，验收看到旧版就用
 `.../tree/<40 位 SHA>` 绕开；线上跑哪一版看页面源码的 `<meta name="theme-version">`。
 **光看 `theme-version` 不够** —— 同一个版本号会有多份预览产物。要确认跑的是哪一份，对
 `document.querySelector('script[type=module]').src` 里的 `index-<hash>.js`，和
@@ -229,6 +230,18 @@ React 19 + TypeScript + Vite 8(rolldown) + Tailwind 4 + TanStack Query + uPlot +
   （v1.2.11 之前还会据它决定「开页自检跑不跑」，自检删掉后这条不用管了。）
   **默认必须是 true**：老后端不下发这个字段而它们一直输出详细数据，默认 false 会让存量站点
   的三网线全部消失。
+- **线路名归后端管，但默认名必须逐条兜住**（v1.2.13，`resolveCarrierNames`）：`/api/config` 的
+  `custom_ct_name` / `custom_cu_name` / `custom_cm_name` / `custom_bd_name` 可以给四条线路改名。
+  归一化只认非空字符串（trim 后），其余（缺席 / null / 空串 / 非字符串）**逐条**退回
+  `DEFAULT_CARRIER_NAMES` —— 老后端一个字段都不下发，整体清空会让存量站点的线路名全变空；
+  站长只改一条时另外三条也不能跟着掉。一条都没改就返回 `DEFAULT_CARRIER_NAMES` 那个常量本身，
+  引用稳定，可以直接进 useMemo 依赖和缓存键。
+  三个消费端各有各的坑，别只改一处：① `usePingOverview` 的 `lineCache` 键要带线路名
+  （`carrierNamesKey`），否则 config 晚到 / 站长改名会被旧缓存顶回去；② `PingChart` 的历史查询
+  按 uuid+hours 缓存，config 变了不会让它重算，所以在组件里按当前名字重贴一遍；
+  ③ `useNodeCardModel` 的占位行（数据还没到那条）也要用线路名，不然三条线里混出个「任务 #2」。
+  线路的 id / key / 探测字段仍是后端固定的四条，可变的只有名字。
+
 - **缓冲区保留期 v1.2.11 放宽到 2 小时 + 15 分钟余量**（`SAMPLE_TTL_MS = PING_WINDOW_MS + 15min`）：
   后端 20 行跨约 2 小时、最新一行本身还能旧到几分钟（5 分钟服务端缓存），最老那行到主题手里常常
   已经接近满窗跨度，留太紧会把本来有真数据的最老一格丢掉。1 小时时代 TTL 正好 60 分钟是擦边状态，
@@ -241,7 +254,15 @@ React 19 + TypeScript + Vite 8(rolldown) + Tailwind 4 + TanStack Query + uPlot +
 
 ## 当前状态
 
-**v1.2.12 已发布**（2026-08-26），`dist` 头是产物提交 `53ae093`（主 chunk `index-BVsBraqp.js`；
+**v1.2.13 已发布**（2026-09-06），`dist` 头是产物提交 `<待回填>`（主 chunk `index-Cp5U__U3.js`；
+与 preview 上验收的 `22f10ff` 同一份产物）。就一件事：**四条线路的显示名改成跟着后端走** ——
+认 `/api/config` 新下发的 `custom_ct_name` / `custom_cu_name` / `custom_cm_name` / `custom_bd_name`，
+首页三网卡片、详情页 Ping 图例、设置页的线路列表与说明文案统一用它；缺席 / 空串**逐条**退回
+主题默认名（老后端一个都不下发，整体清空会让存量站点线路名全变空）。默认名收拢到 mappers 的
+`DEFAULT_CARRIER_NAMES` 一处，`resolveCarrierNames()` 做归一化。446 项测试通过。
+细节与三个消费端的坑见「容易踩的坑」那条。
+
+v1.2.12 已发布（2026-08-26），`dist` 头是产物提交 `53ae093`（主 chunk `index-BVsBraqp.js`；
 与 preview 上验收的 `9bb03db` 同一份产物）。适配后端 2.1.1 的 `POST /api/theme_options`，三件事：
 ① 设置页给登录站长加「保存到后端」按钮（`cfsmPost` / `saveThemeOptions` / `handleSaveToSite`），
 无需再复制 JSON 手动粘到后台；工具栏统一「本机 / 后端」两套词、登录站长隐藏「复制配置 JSON」，
@@ -251,7 +272,7 @@ React 19 + TypeScript + Vite 8(rolldown) + Tailwind 4 + TanStack Query + uPlot +
 `resetAll` 归站点值、`hasLocalOverrides`；详见「容易踩的坑」那条）。439 项测试通过。
 **Turnstile 403 重试路径只有单测覆盖**，真机得站长登录后点一次「保存到后端」才触发（发版前未逐帧核过）。
 
-**v1.2.11 已发布**（2026-08-24），`dist` 头是产物提交 `be9d06c`（主 chunk `index-DG-N805B.js`；
+v1.2.11 已发布（2026-08-24），`dist` 头是产物提交 `be9d06c`（主 chunk `index-DG-N805B.js`；
 与 preview 上验收的 `840f763` 同一份产物）。这一版四件事：
 ① 适配后端把首页 ping/loss 窗口从 1 小时改成 2 小时（还是 20 点）—— 柱子跨度改成**自动跟着数据走**
 （`buildPingBuckets` 的 `resolvePingWindowMs`，取「最老一点到 now」），后端再调窗口前端不用动；
@@ -267,9 +288,6 @@ v1.2.10 已发布（2026-08-23），`dist` 头是产物提交 `1c6fa1a`（主 ch
 20 行；② 首页「实时带宽」不再在刚打开/刷新页面时虚高、也不再一秒内跳好几次，切回标签页
 不再回放旧尖峰；③ 适配后端的 `sysConfig.show_three_net_details`；④ 每页底部加了
 `Powered by CF-Server-Monitor · Theme by LuminaPlus` 两个 GitHub 链接。
-
-v1.2.9（2026-08-21）在 `dist` 上有**两条同名提交**：`4b0192e` 是半成品、`40843e5` 才是完整版
-（成因与预防见「发布流程」）。主题商店里的版本登记由站长自己更新，代码这边推完 `main` 就算完。
 
 **「流量有问题」这类反馈先按这里的实测数据判，别直接改代码**（2026-08-22 在站长面板上量的）：
 主题自身的流量约 **2.6 KB/s**（WS 载荷 2.5 KB/s + `/api/servers` 每 60 秒一次），刷新页面
@@ -287,9 +305,11 @@ v1.2.9（2026-08-21）在 `dist` 上有**两条同名提交**：`4b0192e` 是半
    （最近邻无距离上限、每格存最后一次上报而非聚合、无 WS 订阅就不攒桶）现象上不再复现，
    但没有源码佐证「已修」。
 2. CI 没有「同版本号重复发布」的守卫，已向用户提过，等决定。
-3. `latency_window` 前端已就绪（v1.2.11），2026-08-26 复核**后端已在线上下发**
-   （`monitor.8881025.xyz` 的 `/api/config` 返回 `{hours:2,points:20}`），「按 hours 钉跨度」
-   这条路现在真机可验，不再是 pending。
+3. `custom_*_name`（v1.2.13）**只在 mockApi 里自测过**，真机得等站长在后台给某条线路改名
+   才验得到（后端没下发时走逐条回退，不会坏）。
+4. 设置页「主页延迟检测」那段说明里还写着「/api/servers 下发的**一小时**探测窗口」，
+   自 v1.2.11 后端改成 2 小时起就是过期说法（README 已改对，只剩这处 UI 文案）。
+   改它会动产物，攒到下一版一起发，别为它单独出一版。
 
 v1.2.5 遗留：`src/pages/Traffic.tsx`、`useTodayTrafficStats`、`utils/trafficStats.ts` 与
 `components/traffic/` 已无人引用（`#/traffic` 路由与首页入口都摘掉了，2026-08-23 复核仍是
