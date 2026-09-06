@@ -67,7 +67,9 @@ React 19 + TypeScript + Vite 8(rolldown) + Tailwind 4 + TanStack Query + uPlot +
 ## 发布流程
 
 1. 改 `package.json` 的 `version`，在 `CHANGELOG.md` 加 `## v<版本号>` 段（第一行会成为
-   主题商店的更新日志）
+   主题商店的更新日志）。**用户给了更新日志文案就原样用，别自己扩写** —— CI 把这一行
+   原样当作产物提交信息，而产物分支只追加不改写，发出去就改不掉了（2026-09-06 栽过：
+   用户说「线路名跟着后端走」，我加了后半句，商店里显示的就是加长版）。
 2. `git push origin HEAD:preview` → CI 发布到 `dist-preview` 分支 → **交给用户验收**
 3. 用户确认后再 `git push origin main` → CI 发布到 `dist`
 
