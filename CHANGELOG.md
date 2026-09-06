@@ -3,6 +3,19 @@
 每个版本的第一行会被 CI 取出来，作为产物提交的说明 —— 也就是主题商店里显示的更新日志。
 发新版时先改 `package.json` 的 `version`，再在这里加一段。
 
+## v1.2.14
+
+构建修复：Tailwind 扫描范围钉到源码，改文档不再连带改动构建产物
+
+- **样式的扫描范围从「整个项目」收到 `src/` + `index.html`**（`src/styles/index.css` 改成
+  `@import "tailwindcss" source(none)` 加两条 `@source`）。Tailwind 4 默认会扫描项目里所有
+  未被 .gitignore 的文件，`README.md`、`CHANGELOG.md`、甚至 CI 配置里的普通英文词都会被
+  当成候选 class 生成 CSS —— 于是「只改了一句文档」也会改动产物 hash。CI 的发布条件是
+  「产物有没有变化」，结果就是同一个版本号在产物分支上留下两条提交（v1.2.13 就是这么来的）。
+- **对页面外观没有任何影响**：这次收窄只去掉了两条从来没被用到的规则 ——
+  `.contents`（来自 CI 配置里的 `contents: write`）和 `.[build:github-page]`（来自
+  index.html 的一句注释）。已逐条比对两份产物的全部选择器确认，其余完全一致。
+
 ## v1.2.13
 
 线路名跟着后端走：站长在后台给电信/联通/移动/BGP 改的名字，主题直接显示

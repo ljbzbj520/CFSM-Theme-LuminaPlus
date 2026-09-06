@@ -1,4 +1,13 @@
-@import "tailwindcss";
+/*
+ * 扫描范围钉死在源码里。默认（不写 source()）Tailwind 4 会自动扫整个项目、只跳过
+ * .gitignore 的文件，于是 README.md / CHANGELOG.md 里的普通英文词也会被当成候选 class
+ * 生成 CSS —— 改一句文档就可能改动产物 hash，CI 按「产物有没有变化」发布，dist 上就会
+ * 冒出同版本号的第二条提交（2026-09-06 栽过：CLAUDE.md 里「Worker isolate」生成了
+ * .isolate，把 CLAUDE.md 移出仓库后它消失，多发了一版 v1.2.13）。
+ */
+@import "tailwindcss" source(none);
+@source "../**/*.{ts,tsx}";
+@source "../../index.html";
 @import "./tokens.css";
 @import "./surface.css";
 @import "./home.css";
