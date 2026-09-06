@@ -254,7 +254,7 @@ Workers 对分支地址缓存约 1 小时，验收看到旧版就用
 
 ## 当前状态
 
-**v1.2.13 已发布**（2026-09-06），`dist` 头是产物提交 `<待回填>`（主 chunk `index-Cp5U__U3.js`；
+**v1.2.13 已发布**（2026-09-06），`dist` 头是产物提交 `8c7291c`（主 chunk `index-Cp5U__U3.js`；
 与 preview 上验收的 `22f10ff` 同一份产物）。就一件事：**四条线路的显示名改成跟着后端走** ——
 认 `/api/config` 新下发的 `custom_ct_name` / `custom_cu_name` / `custom_cm_name` / `custom_bd_name`，
 首页三网卡片、详情页 Ping 图例、设置页的线路列表与说明文案统一用它；缺席 / 空串**逐条**退回
