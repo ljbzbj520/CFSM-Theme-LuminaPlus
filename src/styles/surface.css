@@ -1397,6 +1397,34 @@ body::after {
   overflow-x: auto;
 }
 
+/* 要一眼看清「现在是哪一种」的分段控件（首页延迟的单线路 / 多线路就是）：占满整行、
+   两个按钮等宽，选中项用强调色实心。默认那套激活态只是一层很淡的 hover 底色，
+   两项并排时得盯着看才分得出选中的是哪个。 */
+.instance-segmented.is-prominent {
+  display: flex;
+  width: 100%;
+  gap: 4px;
+  padding: 4px;
+}
+
+.instance-segmented.is-prominent button {
+  flex: 1 1 0;
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.instance-segmented.is-prominent button[data-active="true"] {
+  color: #fff;
+  background: linear-gradient(180deg, var(--accent-500), var(--accent-strong));
+  box-shadow: 0 8px 18px -12px var(--accent-strong);
+}
+
+.instance-segmented.is-prominent button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .instance-segmented button,
 .instance-toggle-button {
   display: inline-flex;

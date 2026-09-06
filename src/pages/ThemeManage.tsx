@@ -698,6 +698,9 @@ export function ThemeManage() {
     draftFromSettings(DEFAULT_THEME_SETTINGS),
   );
   const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+  // 多线路模式下「单线路设置」默认收起（大/小卡片用不到它）。但不能删：迷你卡片与列表永远
+  // 走单线路，这里是它们唯一的入口，所以留一个展开按钮。单线路模式下这块恒展开。
+  const [showSingleLineSettings, setShowSingleLineSettings] = useState(false);
   const [taskSearch, setTaskSearch] = useState("");
   const [nodeSearch, setNodeSearch] = useState("");
   const [premiumSearch, setPremiumSearch] = useState("");
@@ -830,6 +833,8 @@ export function ThemeManage() {
   sortedTasksRef.current = sortedTasks;
   // 能选几条：后端给几条线路就最多几条，再被主题的上限夹一次（后端以后加线路，
   // 抬 HOMEPAGE_MULTI_PING_MAX_COUNT 即可，这里不用动）。
+  const singleLineSettingsOpen =
+    !draft.enableHomepageMultiPing || showSingleLineSettings;
   const multiPingSlotLimit = Math.min(
     HOMEPAGE_MULTI_PING_MAX_COUNT,
     Math.max(sortedTasks.length, HOMEPAGE_MULTI_PING_MIN_COUNT),
@@ -1898,36 +1903,35 @@ export function ThemeManage() {
           {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
               混在一排，看不出「哪些设置属于哪种模式」—— 换成分段切换，选中哪种就只展开哪种的设置。 */}
           <div className="surface-inset px-4 py-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                  大卡片 / 小卡片显示
-                </span>
-                <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
-                </span>
-              </div>
-              <div className="instance-segmented is-scrollable shrink-0">
-                {HOMEPAGE_PING_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
-                  const active = draft.enableHomepageMultiPing === value;
-                  return (
-                    <button
-                      key={label}
-                      type="button"
-                      data-active={active ? "true" : "false"}
-                      aria-pressed={active}
-                      disabled={
-                        value && !tasksLoading && sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
-                      }
-                      onClick={() => patch("enableHomepageMultiPing", value)}
-                      className="inline-flex items-center justify-center gap-2"
-                    >
-                      <Icon size={14} />
-                      <span>{label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+            <div className="min-w-0">
+              <span className="block text-[13px] font-medium text-[var(--text-primary)]">
+                大卡片 / 小卡片显示
+              </span>
+              <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
+              </span>
+            </div>
+            {/* 整行、等宽、强调色实心：这是本板块的总开关，得一眼看出选中的是哪种。 */}
+            <div className="instance-segmented is-prominent mt-3">
+              {HOMEPAGE_PING_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
+                const active = draft.enableHomepageMultiPing === value;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    data-active={active ? "true" : "false"}
+                    aria-pressed={active}
+                    disabled={
+                      value && !tasksLoading && sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
+                    }
+                    onClick={() => patch("enableHomepageMultiPing", value)}
+                    className="inline-flex items-center justify-center gap-2"
+                  >
+                    <Icon size={15} />
+                    <span>{label}</span>
+                  </button>
+                );
+              })}
             </div>
 
             {draft.enableHomepageMultiPing ? (
@@ -2030,8 +2034,8 @@ export function ThemeManage() {
             )}
           </div>
 
-          {/* 单线路设置：单线路模式下的大/小卡片用它，迷你卡片与列表则始终用它 ——
-              所以多线路模式下这块也要留着，不能跟着开关一起藏掉。 */}
+          {/* 单线路设置。选了多线路就整块收起来 —— 但不能删掉：迷你卡片与列表永远走单线路，
+              这里是它们唯一的设置入口，所以收起后仍留一行可以展开。 */}
           <div className="surface-inset px-4 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -2040,109 +2044,164 @@ export function ThemeManage() {
                 </span>
                 <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
                   {draft.enableHomepageMultiPing
-                    ? "当前大/小卡片走多线路，这组设置仍然作用于始终单线路的迷你卡片与列表。"
+                    ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示，要改再展开。"
                     : "作用于所有视图。"}
                 </span>
               </div>
-              <label
-                htmlFor="homepage-default-ping-task"
-                className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]"
-              >
-                默认线路
-                <select
-                  id="homepage-default-ping-task"
-                  value={draft.homepageDefaultPingTaskId}
-                  onChange={(event) =>
-                    patch("homepageDefaultPingTaskId", Number(event.target.value))
-                  }
-                  className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+              {draft.enableHomepageMultiPing ? (
+                <button
+                  type="button"
+                  onClick={() => setShowSingleLineSettings((open) => !open)}
+                  aria-expanded={showSingleLineSettings}
+                  className="surface-inset inline-flex shrink-0 items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-500)] hover:text-[var(--text-primary)]"
                 >
-                  {!sortedTasks.some(
-                    (task) => task.id === draft.homepageDefaultPingTaskId,
-                  ) && (
-                    <option value={draft.homepageDefaultPingTaskId}>
-                      任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
-                    </option>
+                  {showSingleLineSettings ? (
+                    <>
+                      <ChevronUp size={13} />
+                      收起
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown size={13} />
+                      展开设置
+                    </>
                   )}
-                  {sortedTasks.map((task) => (
-                    <option key={task.id} value={task.id}>
-                      {task.name || `任务 #${task.id}`}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                </button>
+              ) : (
+                <label
+                  htmlFor="homepage-default-ping-task"
+                  className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]"
+                >
+                  默认线路
+                  <select
+                    id="homepage-default-ping-task"
+                    value={draft.homepageDefaultPingTaskId}
+                    onChange={(event) =>
+                      patch("homepageDefaultPingTaskId", Number(event.target.value))
+                    }
+                    className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                  >
+                    {!sortedTasks.some(
+                      (task) => task.id === draft.homepageDefaultPingTaskId,
+                    ) && (
+                      <option value={draft.homepageDefaultPingTaskId}>
+                        任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                      </option>
+                    )}
+                    {sortedTasks.map((task) => (
+                      <option key={task.id} value={task.id}>
+                        {task.name || `任务 #${task.id}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
             </div>
-            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-              没在下面单独指定线路的节点都显示默认线路，新加的节点也自动跟着它，不用回来一台台绑。
-            </p>
 
-            <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-[12px] font-medium text-[var(--text-secondary)]">
-                  逐节点指定（可选）
-                </span>
-                <span className="text-[11px] text-[var(--text-tertiary)]">
-                  已单独指定 {assignedNodeCount} / {sortedClients.length} 台
-                </span>
-              </div>
-              <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
-                <Search size={14} className="text-[var(--text-tertiary)]" />
-                <input
-                  value={taskSearch}
-                  onChange={(event) => setTaskSearch(event.target.value)}
-                  placeholder="搜索线路名称"
-                  aria-label="搜索线路"
-                  className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
-                />
-              </label>
-
-              <div className="flex flex-col gap-3">
-                {(tasksLoading || clientsLoading) && (
-                  <div className="flex min-h-[20vh] items-center justify-center">
-                    <Spinner size={24} />
-                  </div>
+            {singleLineSettingsOpen && (
+              <>
+                {draft.enableHomepageMultiPing && (
+                  <label
+                    htmlFor="homepage-default-ping-task"
+                    className="mt-4 flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-secondary)]"
+                  >
+                    默认线路
+                    <select
+                      id="homepage-default-ping-task"
+                      value={draft.homepageDefaultPingTaskId}
+                      onChange={(event) =>
+                        patch("homepageDefaultPingTaskId", Number(event.target.value))
+                      }
+                      className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                    >
+                      {!sortedTasks.some(
+                        (task) => task.id === draft.homepageDefaultPingTaskId,
+                      ) && (
+                        <option value={draft.homepageDefaultPingTaskId}>
+                          任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                        </option>
+                      )}
+                      {sortedTasks.map((task) => (
+                        <option key={task.id} value={task.id}>
+                          {task.name || `任务 #${task.id}`}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 )}
+                <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                  没在下面单独指定线路的节点都显示默认线路，新加的节点也自动跟着它，不用回来一台台绑。
+                </p>
 
-                {noTasksYet && (
-                  <div className="theme-manage-empty-state">
-                    <span>没有可用的探测线路。</span>
+                <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                  <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      逐节点指定（可选）
+                    </span>
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                      已单独指定 {assignedNodeCount} / {sortedClients.length} 台
+                    </span>
                   </div>
-                )}
+                  <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
+                    <Search size={14} className="text-[var(--text-tertiary)]" />
+                    <input
+                      value={taskSearch}
+                      onChange={(event) => setTaskSearch(event.target.value)}
+                      placeholder="搜索线路名称"
+                      aria-label="搜索线路"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
+                    />
+                  </label>
 
-                {noFilteredTaskMatch && (
-                  <div className="px-1 py-3 text-[13px] text-[var(--text-secondary)]">
-                    没有匹配的线路。
+                  <div className="flex flex-col gap-3">
+                    {(tasksLoading || clientsLoading) && (
+                      <div className="flex min-h-[20vh] items-center justify-center">
+                        <Spinner size={24} />
+                      </div>
+                    )}
+
+                    {noTasksYet && (
+                      <div className="theme-manage-empty-state">
+                        <span>没有可用的探测线路。</span>
+                      </div>
+                    )}
+
+                    {noFilteredTaskMatch && (
+                      <div className="px-1 py-3 text-[13px] text-[var(--text-secondary)]">
+                        没有匹配的线路。
+                      </div>
+                    )}
+
+                    {!tasksLoading &&
+                      !clientsLoading &&
+                      !noTasksYet &&
+                      filteredTasks.map((task) => {
+                        const expanded = expandedTaskId === task.id;
+                        return (
+                          <TaskBindingSection
+                            key={task.id}
+                            task={task}
+                            defaultTaskId={draft.homepageDefaultPingTaskId}
+                            assigned={
+                              draft.homepagePingBindings[String(task.id)] ??
+                              EMPTY_ASSIGNED_CLIENTS
+                            }
+                            expanded={expanded}
+                            clientsById={clientsById}
+                            // 收起的卡片收到稳定空值:节点搜索的每次击键只重渲展开的那一张。
+                            visibleClients={expanded ? visibleClients : EMPTY_ADMIN_CLIENTS}
+                            assignedTaskByClientUuid={assignedTaskByClientUuid}
+                            nodeSearch={expanded ? nodeSearch : ""}
+                            onNodeSearch={setNodeSearch}
+                            onToggleExpand={toggleTaskExpanded}
+                            onPatchBindings={patchBindings}
+                          />
+                        );
+                      })}
                   </div>
-                )}
-
-                {!tasksLoading &&
-                  !clientsLoading &&
-                  !noTasksYet &&
-                  filteredTasks.map((task) => {
-                    const expanded = expandedTaskId === task.id;
-                    return (
-                      <TaskBindingSection
-                        key={task.id}
-                        task={task}
-                        defaultTaskId={draft.homepageDefaultPingTaskId}
-                        assigned={
-                          draft.homepagePingBindings[String(task.id)] ??
-                          EMPTY_ASSIGNED_CLIENTS
-                        }
-                        expanded={expanded}
-                        clientsById={clientsById}
-                        // 收起的卡片收到稳定空值:节点搜索的每次击键只重渲展开的那一张。
-                        visibleClients={expanded ? visibleClients : EMPTY_ADMIN_CLIENTS}
-                        assignedTaskByClientUuid={assignedTaskByClientUuid}
-                        nodeSearch={expanded ? nodeSearch : ""}
-                        onNodeSearch={setNodeSearch}
-                        onToggleExpand={toggleTaskExpanded}
-                        onPatchBindings={patchBindings}
-                      />
-                    );
-                  })}
-              </div>
-            </div>
+                </div>
+              </>
+            )}
           </div>
 
           <ToggleRow
