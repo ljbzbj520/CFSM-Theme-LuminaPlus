@@ -17,6 +17,7 @@ import {
   List,
   ListFilter,
   Moon,
+  Plus,
   RefreshCw,
   Rows3,
   Save,
@@ -24,6 +25,7 @@ import {
   Sun,
   SunMoon,
   Wallpaper,
+  X,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { InstancePanel } from "@/components/instance/InstancePanel";
@@ -94,6 +96,12 @@ const NODE_VIEW_MODE_OPTIONS = [
   { value: "list", label: "列表", icon: List },
 ] as const;
 const MOBILE_VIEW_MODE_OPTIONS = NODE_VIEW_MODE_OPTIONS.filter((option) => option.value !== "list");
+
+// 大卡片/小卡片显示单条还是多条线路。value 直接是 enableHomepageMultiPing 的布尔值。
+const HOMEPAGE_PING_MODE_OPTIONS = [
+  { value: false, label: "单线路", icon: Rows3 },
+  { value: true, label: "多线路", icon: ListFilter },
+] as const;
 
 function localDateInputMax() {
   const now = new Date();
@@ -1871,15 +1879,9 @@ export function ThemeManage() {
         description={
           <>
             CF-Server-Monitor 的探测点固定为 {carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm} /{" "}
-            {carrierNames.bd} 四条线路，每台节点都有。
-            默认开启多线路模式：大卡片和小卡片统一展示指定的若干条线路（条数自定，1~{multiPingSlotLimit} 条），
-            迷你卡片与列表仍按各自的单线路显示。
-            关掉多线路模式后走单线路模式，可为每个节点单独指定显示哪条线路，未指定的节点显示
-            {carrierNames.ct}。
-            {" "}
-            四条线路的探测目标与探测方式都在后台的服务器编辑里配置，主题读不到。首页的延迟柱状图取自 /api/servers
-            下发的一小时探测窗口（不查历史接口，对后端零额外开销）；后端版本较旧、没有该字段时，
-            会退回按实时推送逐格累积，那种情况下需要开着页面才会慢慢填满。
+            {carrierNames.bd} 四条线路，每台节点都有；探测目标与探测方式都在后台的服务器编辑里配置，
+            主题读不到。首页的延迟柱状图取自 /api/servers 下发的探测窗口（不查历史接口，对后端零额外开销）；
+            后端版本较旧、没有该字段时，会退回按实时推送逐格累积，那种情况下需要开着页面才会慢慢填满。
           </>
         }
         aside={
@@ -1887,59 +1889,95 @@ export function ThemeManage() {
             {tasksLoading || clientsLoading
               ? "载入中"
               : draft.enableHomepageMultiPing
-                ? `多线路 ${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit}`
-                : `${sortedTasks.length} 条线路`}
+                ? `多线路 ${draft.homepageMultiPingTaskIds.length} 条`
+                : "单线路"}
           </div>
         }
       >
         <div className="flex flex-col gap-4">
-          <div
-            className={clsx(
-              "surface-inset px-4 py-4",
-              draft.enableHomepageMultiPing &&
-                "border-[color-mix(in_srgb,var(--accent-500)_32%,var(--hairline))]",
-            )}
-          >
-            <label className="flex items-start justify-between gap-4">
-              <span className="min-w-0">
+          {/* 大卡片 / 小卡片显示哪种：单线路还是多线路。原来是个复选框，和下面的单线路设置
+              混在一排，看不出「哪些设置属于哪种模式」—— 换成分段切换，选中哪种就只展开哪种的设置。 */}
+          <div className="surface-inset px-4 py-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                  开启多线路模式
+                  大卡片 / 小卡片显示
                 </span>
                 <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  默认开启，默认三条（{carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm}）。开启后大卡片和小卡片
-                  统一显示下面选中的线路，条数自定（1~{multiPingSlotLimit} 条）；迷你卡片与列表继续按各自的单线路显示。
-                  关掉就回到单线路模式。
+                  迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。
                 </span>
-              </span>
-              <input
-                type="checkbox"
-                checked={draft.enableHomepageMultiPing}
-                disabled={
-                  !draft.enableHomepageMultiPing &&
-                  !tasksLoading &&
-                  sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
-                }
-                onChange={(event) =>
-                  patch("enableHomepageMultiPing", event.target.checked)
-                }
-                className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent-500)]"
-              />
-            </label>
+              </div>
+              <div className="instance-segmented is-scrollable shrink-0">
+                {HOMEPAGE_PING_MODE_OPTIONS.map(({ value, label, icon: Icon }) => {
+                  const active = draft.enableHomepageMultiPing === value;
+                  return (
+                    <button
+                      key={label}
+                      type="button"
+                      data-active={active ? "true" : "false"}
+                      aria-pressed={active}
+                      disabled={
+                        value && !tasksLoading && sortedTasks.length < HOMEPAGE_MULTI_PING_MIN_COUNT
+                      }
+                      onClick={() => patch("enableHomepageMultiPing", value)}
+                      className="inline-flex items-center justify-center gap-2"
+                    >
+                      <Icon size={14} />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-            {draft.enableHomepageMultiPing && (
+            {draft.enableHomepageMultiPing ? (
               <div className="mt-4 border-t border-[var(--hairline)] pt-4">
-                {/* 槽位数量由已选线路条数决定（不再固定三格）：每格一条，右上角的 × 删这一条，
-                    下面的「添加线路」补一条，上限是后端能提供的线路数。 */}
+                <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                    显示这些线路（按顺序）
+                  </span>
+                  <span className="text-[11px] text-[var(--text-tertiary)]">
+                    已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
+                  </span>
+                </div>
+                {/* 槽位数量跟着已选条数走。「移除」是紧挨着下拉框的小 × ——
+                    放在标签行右端时会紧贴下一列的标签，看着像是下一条线路的按钮。 */}
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {draft.homepageMultiPingTaskIds.map((selectedTaskId, slot) => (
                     <div key={`${slot}-${selectedTaskId}`} className="min-w-0">
-                      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-                        <label
-                          htmlFor={`multi-ping-slot-${slot}`}
-                          className="block text-[11px] font-medium text-[var(--text-secondary)]"
+                      <label
+                        htmlFor={`multi-ping-slot-${slot}`}
+                        className="mb-1.5 block text-[11px] font-medium text-[var(--text-secondary)]"
+                      >
+                        线路 {slot + 1}
+                      </label>
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          id={`multi-ping-slot-${slot}`}
+                          value={selectedTaskId}
+                          onChange={(event) =>
+                            patchMultiPingTask(slot, event.target.value)
+                          }
+                          className="surface-inset min-w-0 flex-1 px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
                         >
-                          线路 {slot + 1}
-                        </label>
+                          {!sortedTasks.some((task) => task.id === selectedTaskId) && (
+                            <option value={selectedTaskId}>
+                              任务 #{selectedTaskId}（当前不可用）
+                            </option>
+                          )}
+                          {sortedTasks.map((task) => (
+                            <option
+                              key={task.id}
+                              value={task.id}
+                              disabled={
+                                task.id !== selectedTaskId &&
+                                draft.homepageMultiPingTaskIds.includes(task.id)
+                              }
+                            >
+                              {task.name || `任务 #${task.id}`}
+                            </option>
+                          ))}
+                        </select>
                         <button
                           type="button"
                           onClick={() => removeMultiPingTask(slot)}
@@ -1948,37 +1986,12 @@ export function ThemeManage() {
                             HOMEPAGE_MULTI_PING_MIN_COUNT
                           }
                           aria-label={`移除线路 ${slot + 1}`}
-                          className="text-[11px] text-[var(--text-tertiary)] transition-colors hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--text-tertiary)]"
+                          title="移除这条线路"
+                          className="surface-inset flex h-[34px] w-[34px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
                         >
-                          移除
+                          <X size={14} />
                         </button>
                       </div>
-                      <select
-                        id={`multi-ping-slot-${slot}`}
-                        value={selectedTaskId}
-                        onChange={(event) =>
-                          patchMultiPingTask(slot, event.target.value)
-                        }
-                        className="surface-inset w-full px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
-                      >
-                        {!sortedTasks.some((task) => task.id === selectedTaskId) && (
-                          <option value={selectedTaskId}>
-                            任务 #{selectedTaskId}（当前不可用）
-                          </option>
-                        )}
-                        {sortedTasks.map((task) => (
-                          <option
-                            key={task.id}
-                            value={task.id}
-                            disabled={
-                              task.id !== selectedTaskId &&
-                              draft.homepageMultiPingTaskIds.includes(task.id)
-                            }
-                          >
-                            {task.name || `任务 #${task.id}`}
-                          </option>
-                        ))}
-                      </select>
                     </div>
                   ))}
                 </div>
@@ -1989,94 +2002,148 @@ export function ThemeManage() {
                     disabled={
                       draft.homepageMultiPingTaskIds.length >= multiPingSlotLimit
                     }
-                    className="surface-inset px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
+                    className="surface-inset inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-[var(--text-primary)] transition-colors hover:border-[var(--accent-500)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[var(--hairline)]"
                   >
-                    + 添加线路
+                    <Plus size={13} />
+                    添加线路
                   </button>
-                  <span className="text-[11px] text-[var(--text-tertiary)]">
-                    已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
+                  <span
+                    className={clsx(
+                      "text-[11px] leading-relaxed",
+                      draftMultiPingInvalid
+                        ? "text-[var(--status-error)]"
+                        : "text-[var(--text-tertiary)]",
+                    )}
+                    role={draftMultiPingInvalid ? "alert" : undefined}
+                  >
+                    {draftMultiPingInvalid
+                      ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
+                      : "某条线路没有节点样本时保留该行并显示“无样本”。"}
                   </span>
                 </div>
-                <p
-                  className={clsx(
-                    "mt-3 text-[11px] leading-relaxed",
-                    draftMultiPingInvalid
-                      ? "text-[var(--status-error)]"
-                      : "text-[var(--text-tertiary)]",
-                  )}
-                  role={draftMultiPingInvalid ? "alert" : undefined}
-                >
-                  {draftMultiPingInvalid
-                    ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
-                    : "线路按这里的顺序显示；某条线路没有节点样本时保留该行并显示“无样本”。"}
-                </p>
               </div>
+            ) : (
+              <p className="mt-4 border-t border-[var(--hairline)] pt-4 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                每台节点只显示一条线路，用下面「单线路设置」里的默认线路；个别节点想看别的线路，
+                在那里单独指定。
+              </p>
             )}
           </div>
 
-          {/* 单线路模式的兜底线路。写死电信时，全站绑联通的站点每加一台节点就冒出一条电信，
-              站长得记得回来手动绑 —— 这个下拉就是为了免掉那一步。 */}
+          {/* 单线路设置：单线路模式下的大/小卡片用它，迷你卡片与列表则始终用它 ——
+              所以多线路模式下这块也要留着，不能跟着开关一起藏掉。 */}
           <div className="surface-inset px-4 py-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <label htmlFor="homepage-default-ping-task" className="min-w-0">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
                 <span className="block text-[13px] font-medium text-[var(--text-primary)]">
-                  默认线路
+                  单线路设置
                 </span>
                 <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  单线路模式下，没在下面单独指定线路的节点都显示这条 —— 新加的节点也会自动跟着它，
-                  不用再回来一台台绑。迷你卡片与列表始终按单线路显示，所以这项对它们一直有效。
+                  {draft.enableHomepageMultiPing
+                    ? "当前大/小卡片走多线路，这组设置仍然作用于始终单线路的迷你卡片与列表。"
+                    : "作用于所有视图。"}
                 </span>
-              </label>
-              <select
-                id="homepage-default-ping-task"
-                value={draft.homepageDefaultPingTaskId}
-                onChange={(event) =>
-                  patch("homepageDefaultPingTaskId", Number(event.target.value))
-                }
-                className="surface-inset w-full max-w-[240px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+              </div>
+              <label
+                htmlFor="homepage-default-ping-task"
+                className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]"
               >
-                {!sortedTasks.some(
-                  (task) => task.id === draft.homepageDefaultPingTaskId,
-                ) && (
-                  <option value={draft.homepageDefaultPingTaskId}>
-                    任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
-                  </option>
+                默认线路
+                <select
+                  id="homepage-default-ping-task"
+                  value={draft.homepageDefaultPingTaskId}
+                  onChange={(event) =>
+                    patch("homepageDefaultPingTaskId", Number(event.target.value))
+                  }
+                  className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
+                >
+                  {!sortedTasks.some(
+                    (task) => task.id === draft.homepageDefaultPingTaskId,
+                  ) && (
+                    <option value={draft.homepageDefaultPingTaskId}>
+                      任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                    </option>
+                  )}
+                  {sortedTasks.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.name || `任务 #${task.id}`}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+              没在下面单独指定线路的节点都显示默认线路，新加的节点也自动跟着它，不用回来一台台绑。
+            </p>
+
+            <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                  逐节点指定（可选）
+                </span>
+                <span className="text-[11px] text-[var(--text-tertiary)]">
+                  已单独指定 {assignedNodeCount} / {sortedClients.length} 台
+                </span>
+              </div>
+              <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
+                <Search size={14} className="text-[var(--text-tertiary)]" />
+                <input
+                  value={taskSearch}
+                  onChange={(event) => setTaskSearch(event.target.value)}
+                  placeholder="搜索线路名称"
+                  aria-label="搜索线路"
+                  className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
+                />
+              </label>
+
+              <div className="flex flex-col gap-3">
+                {(tasksLoading || clientsLoading) && (
+                  <div className="flex min-h-[20vh] items-center justify-center">
+                    <Spinner size={24} />
+                  </div>
                 )}
-                {sortedTasks.map((task) => (
-                  <option key={task.id} value={task.id}>
-                    {task.name || `任务 #${task.id}`}
-                  </option>
-                ))}
-              </select>
+
+                {noTasksYet && (
+                  <div className="theme-manage-empty-state">
+                    <span>没有可用的探测线路。</span>
+                  </div>
+                )}
+
+                {noFilteredTaskMatch && (
+                  <div className="px-1 py-3 text-[13px] text-[var(--text-secondary)]">
+                    没有匹配的线路。
+                  </div>
+                )}
+
+                {!tasksLoading &&
+                  !clientsLoading &&
+                  !noTasksYet &&
+                  filteredTasks.map((task) => {
+                    const expanded = expandedTaskId === task.id;
+                    return (
+                      <TaskBindingSection
+                        key={task.id}
+                        task={task}
+                        defaultTaskId={draft.homepageDefaultPingTaskId}
+                        assigned={
+                          draft.homepagePingBindings[String(task.id)] ??
+                          EMPTY_ASSIGNED_CLIENTS
+                        }
+                        expanded={expanded}
+                        clientsById={clientsById}
+                        // 收起的卡片收到稳定空值:节点搜索的每次击键只重渲展开的那一张。
+                        visibleClients={expanded ? visibleClients : EMPTY_ADMIN_CLIENTS}
+                        assignedTaskByClientUuid={assignedTaskByClientUuid}
+                        nodeSearch={expanded ? nodeSearch : ""}
+                        onNodeSearch={setNodeSearch}
+                        onToggleExpand={toggleTaskExpanded}
+                        onPatchBindings={patchBindings}
+                      />
+                    );
+                  })}
+              </div>
             </div>
           </div>
-
-          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(240px,320px)]">
-            <label className="surface-inset flex items-center gap-2 px-3 py-2">
-              <Search size={14} className="text-[var(--text-tertiary)]" />
-              <input
-                value={taskSearch}
-                onChange={(event) => setTaskSearch(event.target.value)}
-                placeholder="搜索线路名称"
-                aria-label="搜索线路"
-                className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
-              />
-            </label>
-            <div className="surface-inset flex items-center justify-between gap-3 px-3 py-2 text-[12px] text-[var(--text-secondary)]">
-              <span>首页绑定总数</span>
-              <strong className="text-[var(--text-primary)]">
-                {draft.enableHomepageMultiPing
-                  ? `${draft.homepageMultiPingTaskIds.length} / ${multiPingSlotLimit} 条线路`
-                  : `${assignedNodeCount} / ${sortedClients.length}`}
-              </strong>
-            </div>
-          </div>
-
-          {draft.enableHomepageMultiPing && (
-            <div className="text-[11px] text-[var(--text-tertiary)]">
-              下方单线路绑定继续用于迷你卡片和列表；大卡片与小卡片使用上方选中的线路。
-            </div>
-          )}
 
           <ToggleRow
             field="fakePingForUnbound"
@@ -2085,50 +2152,6 @@ export function ThemeManage() {
             checked={draft.fakePingForUnbound}
             onPatch={patch}
           />
-
-          {(tasksLoading || clientsLoading) && (
-            <div className="flex min-h-[20vh] items-center justify-center">
-              <Spinner size={24} />
-            </div>
-          )}
-
-          {noTasksYet && (
-            <div className="theme-manage-empty-state">
-              <span>没有可用的探测线路。</span>
-            </div>
-          )}
-
-          {noFilteredTaskMatch && (
-            <div className="surface-inset px-4 py-5 text-[13px] text-[var(--text-secondary)]">
-              没有匹配的线路。
-            </div>
-          )}
-
-          {!tasksLoading &&
-            !clientsLoading &&
-            !noTasksYet &&
-            filteredTasks.map((task) => {
-              const expanded = expandedTaskId === task.id;
-              return (
-                <TaskBindingSection
-                  key={task.id}
-                  task={task}
-                  defaultTaskId={draft.homepageDefaultPingTaskId}
-                  assigned={
-                    draft.homepagePingBindings[String(task.id)] ?? EMPTY_ASSIGNED_CLIENTS
-                  }
-                  expanded={expanded}
-                  clientsById={clientsById}
-                  // 收起的卡片收到稳定空值:节点搜索的每次击键只重渲展开的那一张。
-                  visibleClients={expanded ? visibleClients : EMPTY_ADMIN_CLIENTS}
-                  assignedTaskByClientUuid={assignedTaskByClientUuid}
-                  nodeSearch={expanded ? nodeSearch : ""}
-                  onNodeSearch={setNodeSearch}
-                  onToggleExpand={toggleTaskExpanded}
-                  onPatchBindings={patchBindings}
-                />
-              );
-            })}
         </div>
       </InstancePanel>
     </div>
