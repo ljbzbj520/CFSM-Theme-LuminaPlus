@@ -15,6 +15,7 @@ Thumbs.db
 .idea/
 .vscode/
 .claude/
+CLAUDE.md
 .codex
 .env
 .env.*
