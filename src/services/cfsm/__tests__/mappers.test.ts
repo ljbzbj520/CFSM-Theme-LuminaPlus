@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import { CfsmServerSchema, type CfsmServer } from "@/types/cfsm";
 import {
   carrierPingTasks,
+  carrierTaskName,
+  DEFAULT_CARRIER_NAMES,
+  resolveCarrierNames,
   parseLatencyWindow,
   historyRowToLoadRecord,
   historyRowsToPingRecords,
@@ -323,6 +326,41 @@ describe("history conversion", () => {
       [3, "移动"],
       [4, "BD"],
     ]);
+  });
+
+  it("uses the site's custom carrier names when given", () => {
+    const names = resolveCarrierNames({ ct: "CT", bd: "BGP" });
+
+    expect(carrierPingTasks(names).map((task) => task.name)).toEqual([
+      "CT",
+      "联通",
+      "移动",
+      "BGP",
+    ]);
+    expect(carrierTaskName(1, names)).toBe("CT");
+    expect(carrierTaskName(3, names)).toBe("移动");
+  });
+});
+
+describe("resolveCarrierNames", () => {
+  it("keeps the default names for anything the backend did not send", () => {
+    // 老后端一条都不下发；新后端也可能只改其中一两条，剩下的不能被清空。
+    expect(resolveCarrierNames(undefined)).toBe(DEFAULT_CARRIER_NAMES);
+    expect(resolveCarrierNames({})).toBe(DEFAULT_CARRIER_NAMES);
+    expect(resolveCarrierNames({ ct: "", cu: null, cm: 42, bd: "  " })).toBe(
+      DEFAULT_CARRIER_NAMES,
+    );
+  });
+
+  it("trims the customised names and leaves the rest alone", () => {
+    expect(resolveCarrierNames({ cu: "  CU 联通 " })).toEqual({
+      ...DEFAULT_CARRIER_NAMES,
+      cu: "CU 联通",
+    });
+  });
+
+  it("falls back to a placeholder for ids outside the four fixed carriers", () => {
+    expect(carrierTaskName(9)).toBe("线路 #9");
   });
 });
 

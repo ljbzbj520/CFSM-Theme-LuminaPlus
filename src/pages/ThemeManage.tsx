@@ -29,7 +29,7 @@ import { clsx } from "clsx";
 import { InstancePanel } from "@/components/instance/InstancePanel";
 import { Spinner } from "@/components/ui/Spinner";
 import { Flag } from "@/components/ui/Flag";
-import { usePublicConfig } from "@/hooks/usePublicConfig";
+import { useCarrierNames, usePublicConfig } from "@/hooks/usePublicConfig";
 import { useHourlyClock } from "@/hooks/useClock";
 import { pickPaletteSettings } from "@/hooks/useMetricColors";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
@@ -678,6 +678,7 @@ export function ThemeManage() {
     error: configError,
     refetch: refetchConfig,
   } = usePublicConfig();
+  const carrierNames = useCarrierNames();
   // 全部托管设置收敛为单个草稿对象。之前是 30 个平行 useState,每新增一项设置要同步维护
   // 声明/seedDrafts/payload/依赖数组四处清单;现在键清单只在 pickManagedThemeSettings 一处。
   const [draft, setDraft] = useState<ThemeDraft>(() =>
@@ -738,8 +739,9 @@ export function ThemeManage() {
     });
   }, []);
 
-  // CF-Server-Monitor 的探测点固定为四条线路，没有可配置的 ping 任务列表。
-  const pingTasks = useMemo(() => carrierPingTasks(), []);
+  // CF-Server-Monitor 的探测点固定为四条线路，没有可配置的 ping 任务列表；
+  // 名字则跟着后端的 custom_*_name 走（站长改过就显示他改的）。
+  const pingTasks = useMemo(() => carrierPingTasks(carrierNames), [carrierNames]);
   const tasksLoading = false;
   const {
     data: adminClients,
@@ -1821,9 +1823,11 @@ export function ThemeManage() {
         title="主页延迟检测"
         description={
           <>
-            CF-Server-Monitor 的探测点固定为电信 / 联通 / 移动 / BD 四条线路，每台节点都有。
+            CF-Server-Monitor 的探测点固定为 {carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm} /{" "}
+            {carrierNames.bd} 四条线路，每台节点都有。
             默认开启三网模式：大卡片和小卡片统一展示指定的三条线路，迷你卡片与列表仍按各自的单线路显示。
-            关掉三网模式后走单线路模式，可为每个节点单独指定显示哪条线路，未指定的节点显示电信。
+            关掉三网模式后走单线路模式，可为每个节点单独指定显示哪条线路，未指定的节点显示
+            {carrierNames.ct}。
             {" "}
             四条线路的探测目标与探测方式都在后台的服务器编辑里配置，主题读不到。首页的延迟柱状图取自 /api/servers
             下发的一小时探测窗口（不查历史接口，对后端零额外开销）；后端版本较旧、没有该字段时，
@@ -1854,7 +1858,7 @@ export function ThemeManage() {
                   开启三网模式
                 </span>
                 <span className="mt-1 block text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  默认开启（电信 / 联通 / 移动）。开启后大卡片和小卡片统一显示下面三条线路；
+                  默认开启（{carrierNames.ct} / {carrierNames.cu} / {carrierNames.cm}）。开启后大卡片和小卡片统一显示下面三条线路；
                   迷你卡片与列表继续按各自的单线路显示。关掉就回到单线路模式。
                 </span>
               </span>

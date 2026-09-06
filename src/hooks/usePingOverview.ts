@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { useMinuteClock } from "@/hooks/useClock";
+import { useCarrierNames } from "@/hooks/usePublicConfig";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import {
   getPingHistorySnapshot,
@@ -8,9 +9,15 @@ import {
   SAMPLE_TTL_MS,
   type PingLiveSample,
 } from "@/services/pingLiveStore";
-import { CARRIER_TASK_BY_ID, inferIntervalSeconds } from "@/services/cfsm/mappers";
+import {
+  CARRIER_TASK_BY_ID,
+  DEFAULT_CARRIER_NAMES,
+  carrierTaskName,
+  inferIntervalSeconds,
+} from "@/services/cfsm/mappers";
 import type {
   CarrierKey,
+  CarrierNames,
   CarrierPingSnapshot,
   HomepagePingLine,
   PingOverviewBucket,
@@ -211,14 +218,17 @@ function getCachedLines(
   taskIds: number[],
   samples: readonly PingLiveSample[],
   sampleIntervalMs?: number,
+  names: CarrierNames = DEFAULT_CARRIER_NAMES,
 ): HomepagePingLine[] {
   if (taskIds.length === 0) return EMPTY_PING_LINES;
-  const key = taskIds.join(",");
+  // 线路名进缓存键：站长改过名 / config 晚到时换的是另一份 names 对象，
+  // 不进键的话缓存会把旧名字一直顶回去。
+  const key = `${taskIds.join(",")}@${carrierNamesKey(names)}`;
   if (samples.length === 0) {
     return taskIds.map((taskId) => ({
       ...buildPingOverviewItem(client, taskId, samples, sampleIntervalMs),
       taskId,
-      taskName: CARRIER_TASK_BY_ID.get(taskId)?.name ?? `线路 #${taskId}`,
+      taskName: carrierTaskName(taskId, names),
     }));
   }
 
@@ -233,10 +243,17 @@ function getCachedLines(
   const lines = taskIds.map((taskId) => ({
     ...getCachedItem(client, taskId, samples, sampleIntervalMs),
     taskId,
-    taskName: CARRIER_TASK_BY_ID.get(taskId)?.name ?? `线路 #${taskId}`,
+    taskName: carrierTaskName(taskId, names),
   }));
   byKey.set(key, lines);
   return lines;
+}
+
+/** 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼四个名字。 */
+function carrierNamesKey(names: CarrierNames): string {
+  return names === DEFAULT_CARRIER_NAMES
+    ? "default"
+    : `${names.ct}|${names.cu}|${names.cm}|${names.bd}`;
 }
 
 function usePingSamples(uuid: string, enabled: boolean): readonly PingLiveSample[] {
@@ -308,12 +325,13 @@ export function useNodePingOverviewLines(
 ): HomepagePingLine[] {
   const samples = usePingSamples(uuid, enabled);
   const { homepageMultiPingTaskIds } = useThemeSettings();
+  const carrierNames = useCarrierNames();
   return useMemo(
     () =>
       enabled
-        ? getCachedLines(uuid, homepageMultiPingTaskIds, samples)
+        ? getCachedLines(uuid, homepageMultiPingTaskIds, samples, undefined, carrierNames)
         : EMPTY_PING_LINES,
-    [enabled, homepageMultiPingTaskIds, samples, uuid],
+    [carrierNames, enabled, homepageMultiPingTaskIds, samples, uuid],
   );
 }
 

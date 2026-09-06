@@ -12,6 +12,7 @@ import {
   saveThemeOptions,
 } from "@/services/api";
 import { resetApiBaseCache } from "@/services/cfsm/config";
+import { DEFAULT_CARRIER_NAMES } from "@/services/cfsm/mappers";
 import { ApiRequestError } from "@/services/cfsm/http";
 import { getPingHistorySnapshot } from "@/services/pingLiveStore";
 
@@ -170,6 +171,46 @@ describe("getPublic", () => {
     const config = await getPublic();
 
     expect(config.latencyWindow).toBeUndefined();
+  });
+
+  it("takes the carrier names the backend customised", async () => {
+    fetchMock.mockImplementation(
+      jsonReply({
+        site_title: "S",
+        custom_ct_name: "CT",
+        custom_cu_name: "CU",
+        custom_cm_name: "CM",
+        custom_bd_name: "BGP",
+      }),
+    );
+
+    const config = await getPublic();
+
+    expect(config.carrierNames).toEqual({ ct: "CT", cu: "CU", cm: "CM", bd: "BGP" });
+  });
+
+  it("falls back per carrier when only some names are customised", async () => {
+    // 老后端一个都不下发、新后端也可能只改一两条：没给的那几条必须留默认名，不能变空。
+    fetchMock.mockImplementation(
+      jsonReply({ site_title: "S", custom_bd_name: "BGP", custom_cm_name: "  " }),
+    );
+
+    const config = await getPublic();
+
+    expect(config.carrierNames).toEqual({
+      ct: "电信",
+      cu: "联通",
+      cm: "移动",
+      bd: "BGP",
+    });
+  });
+
+  it("keeps the default carrier names when the backend omits the fields", async () => {
+    fetchMock.mockImplementation(jsonReply({ site_title: "S" }));
+
+    const config = await getPublic();
+
+    expect(config.carrierNames).toEqual(DEFAULT_CARRIER_NAMES);
   });
 
   it("caches the encrypted turnstile credential for reuse", async () => {

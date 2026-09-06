@@ -3,6 +3,8 @@ import {
   CfsmServerSchema,
   EMPTY_CARRIER_PING,
   GpuEntrySchema,
+  type CarrierKey,
+  type CarrierNames,
   type CarrierPingSnapshot,
   type CfsmServer,
   type DiskIo,
@@ -22,12 +24,48 @@ const GIB = 1024 * 1024 * 1024;
 /** 与后端 `/api/servers` 聚合统计一致的在线判定阈值。 */
 export const ONLINE_THRESHOLD_MS = 300_000;
 
+/**
+ * 四条线路的默认显示名。站长可以在后端改名（`/api/config` 的 `custom_ct_name` 等，
+ * 后端后加的字段），老后端不下发时就用这里的默认值 —— 所以四条线路的 id / key 是固定的，
+ * 只有名字可变。
+ */
+export type { CarrierNames };
+
+export const DEFAULT_CARRIER_NAMES: CarrierNames = {
+  ct: "电信",
+  cu: "联通",
+  cm: "移动",
+  bd: "BD",
+};
+
+/**
+ * 后端下发的自定义名归一化：只认非空字符串，其余（缺席 / null / 空串 / 非字符串）
+ * 逐条回退到默认名 —— 后端只改了其中一条时，另外三条不能跟着变空。
+ */
+export function resolveCarrierNames(
+  overrides?: Partial<Record<CarrierKey, unknown>> | null,
+): CarrierNames {
+  if (!overrides) return DEFAULT_CARRIER_NAMES;
+  const resolved = { ...DEFAULT_CARRIER_NAMES };
+  let changed = false;
+  for (const key of Object.keys(DEFAULT_CARRIER_NAMES) as CarrierKey[]) {
+    const raw = overrides[key];
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (!trimmed || trimmed === resolved[key]) continue;
+    resolved[key] = trimmed;
+    changed = true;
+  }
+  // 没有任何覆盖时返回同一个常量，调用方（useMemo / 缓存键）可以按引用比较。
+  return changed ? resolved : DEFAULT_CARRIER_NAMES;
+}
+
 /** 四条固定线路。CF-Server-Monitor 的探测点是固定的，没有可配置的 ping 任务。 */
 export const CARRIER_TASKS = [
-  { id: 1, key: "ct", name: "电信", field: "ping_ct", lossField: "loss_ct" },
-  { id: 2, key: "cu", name: "联通", field: "ping_cu", lossField: "loss_cu" },
-  { id: 3, key: "cm", name: "移动", field: "ping_cm", lossField: "loss_cm" },
-  { id: 4, key: "bd", name: "BD", field: "ping_bd", lossField: "loss_bd" },
+  { id: 1, key: "ct", name: DEFAULT_CARRIER_NAMES.ct, field: "ping_ct", lossField: "loss_ct" },
+  { id: 2, key: "cu", name: DEFAULT_CARRIER_NAMES.cu, field: "ping_cu", lossField: "loss_cu" },
+  { id: 3, key: "cm", name: DEFAULT_CARRIER_NAMES.cm, field: "ping_cm", lossField: "loss_cm" },
+  { id: 4, key: "bd", name: DEFAULT_CARRIER_NAMES.bd, field: "ping_bd", lossField: "loss_bd" },
 ] as const;
 
 export type CarrierTask = (typeof CARRIER_TASKS)[number];
@@ -36,11 +74,20 @@ export const CARRIER_TASK_BY_ID = new Map<number, CarrierTask>(
   CARRIER_TASKS.map((task) => [task.id, task]),
 );
 
-export function carrierPingTasks(): PingTask[] {
+/** 线路 id → 显示名；`names` 缺席按默认名，未知 id 退回「线路 #n」。 */
+export function carrierTaskName(
+  taskId: number,
+  names: CarrierNames = DEFAULT_CARRIER_NAMES,
+): string {
+  const key = CARRIER_TASK_BY_ID.get(taskId)?.key;
+  return key ? names[key] : `线路 #${taskId}`;
+}
+
+export function carrierPingTasks(names: CarrierNames = DEFAULT_CARRIER_NAMES): PingTask[] {
   return CARRIER_TASKS.map((task) => ({
     id: task.id,
     interval: 60,
-    name: task.name,
+    name: names[task.key],
     loss: 0,
     clients: [],
     type: "icmp",

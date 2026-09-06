@@ -234,6 +234,15 @@ export const SiteConfigSchema = z
     turnstile_verified: looseString.nullish().transform((v) => v ?? ""),
     long_history_points: looseNumber.default(120),
     /**
+     * 站长在后台给四条线路起的名字（后端后加的字段）。缺席 / 空串就用主题的默认名
+     * （电信 / 联通 / 移动 / BD），见 mappers 的 `resolveCarrierNames` —— 老后端不下发这几个
+     * 字段，默认名必须原样保留，否则存量站点的线路名会集体变空。
+     */
+    custom_ct_name: looseString.nullish().transform((v) => v ?? ""),
+    custom_cu_name: looseString.nullish().transform((v) => v ?? ""),
+    custom_cm_name: looseString.nullish().transform((v) => v ?? ""),
+    custom_bd_name: looseString.nullish().transform((v) => v ?? ""),
+    /**
      * 后端下发的首页延迟窗口口径：`points`=柱子格数、`hours`=窗口跨度（小时）。
      * 后端后加的字段，老后端 / 还没上线时缺席 —— 前端据 `hours` 定跨度，缺席就回退到
      * 「从数据时间戳自推」（见 usePingOverview 的 buildPingBuckets）。`points` 暂不驱动格数。
@@ -369,6 +378,13 @@ export interface NodeMetrics {
 }
 
 export type CarrierKey = "ct" | "cu" | "cm" | "bd";
+
+/**
+ * 四条线路的显示名。id / key 由后端固定，只有名字可由站长改（`/api/config` 的
+ * `custom_*_name`），默认名与归一化逻辑在 `services/cfsm/mappers` 的
+ * `DEFAULT_CARRIER_NAMES` / `resolveCarrierNames`。
+ */
+export type CarrierNames = Record<CarrierKey, string>;
 
 export interface CarrierPingSnapshot {
   ct: number | null;
@@ -594,4 +610,9 @@ export interface PublicConfig {
   sys: SysConfig;
   /** 后端下发的首页延迟窗口口径；缺席时前端从数据自推跨度。见 `SiteConfigSchema.latency_window`。 */
   latencyWindow?: { points?: number; hours?: number };
+  /**
+   * 四条线路的显示名：后端 `custom_*_name` 逐条覆盖，缺的沿用主题默认名。
+   * 后端没下发任何一条时是 `DEFAULT_CARRIER_NAMES` 那个常量本身（引用稳定）。
+   */
+  carrierNames: CarrierNames;
 }

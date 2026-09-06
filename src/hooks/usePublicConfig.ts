@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { getPublic } from "@/services/api";
-import type { PublicConfig } from "@/types/cfsm";
+import { DEFAULT_CARRIER_NAMES } from "@/services/cfsm/mappers";
+import type { CarrierNames, PublicConfig } from "@/types/cfsm";
 
 export function usePublicConfig() {
   return useQuery<PublicConfig>({
@@ -23,4 +24,15 @@ export function useLatencyWindowMs(): number | undefined {
   return typeof hours === "number" && Number.isFinite(hours) && hours > 0
     ? hours * 60 * 60 * 1000
     : undefined;
+}
+
+/**
+ * 四条线路的显示名。站长在后端改过（`/api/config` 的 `custom_ct_name` 等）就用他改的，
+ * 老后端 / 没改过时是 `DEFAULT_CARRIER_NAMES` 那个常量本身 —— 引用稳定，可以直接进
+ * useMemo 依赖和缓存键。config 还没到时同样先给默认名，到了之后订阅这个 query 的组件
+ * 会重渲染，名字自己换过去。
+ */
+export function useCarrierNames(): CarrierNames {
+  const { data } = usePublicConfig();
+  return data?.carrierNames ?? DEFAULT_CARRIER_NAMES;
 }

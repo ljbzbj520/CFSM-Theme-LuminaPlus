@@ -11,7 +11,8 @@ import {
   withLiveLatency,
 } from "@/hooks/usePingOverview";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
-import { useLatencyWindowMs } from "@/hooks/usePublicConfig";
+import { carrierTaskName } from "@/services/cfsm/mappers";
+import { useCarrierNames, useLatencyWindowMs } from "@/hooks/usePublicConfig";
 import type { HomepagePingDisplayLine, HomepagePingLine } from "@/types/cfsm";
 import { formatRenewalPrice } from "@/utils/billing";
 import { getExpireTextColor } from "@/utils/expireStatus";
@@ -122,6 +123,7 @@ export function useNodeCardModel(
   // 后端下发 latency_window.hours 时用它定柱子跨度；缺席就传 undefined，回退到
   // buildPingBuckets 的「从数据自推跨度」。四种视图都走这里，口径统一。
   const latencyWindowMs = useLatencyWindowMs();
+  const carrierNames = useCarrierNames();
   const pingBuckets = usePingBuckets(
     ping,
     pingBucketCount,
@@ -142,7 +144,8 @@ export function useNodeCardModel(
       const line: HomepagePingLine =
         loaded ?? {
           taskId,
-          taskName: `任务 #${taskId}`,
+          // 还没数据的占位行也用线路名（站长改过就跟着改），不然三条线里会混出一个「任务 #2」。
+          taskName: carrierTaskName(taskId, carrierNames),
           client: uuid,
           isAssigned: true,
           loadState: "pending",
@@ -164,6 +167,7 @@ export function useNodeCardModel(
     });
   }, [
     bucketNow,
+    carrierNames,
     homepageMultiPingTaskIds,
     latencyWindowMs,
     multiPingActive,

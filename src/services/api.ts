@@ -25,6 +25,7 @@ import {
 import {
   CARRIER_TASKS,
   carrierPingTasks,
+  resolveCarrierNames,
   historyRowToLoadRecord,
   historyRowsToPingRecords,
   historyRowsToPingSamples,
@@ -133,6 +134,13 @@ export async function getPublic(options?: RequestOptions): Promise<PublicConfig>
     // 第三方主题的自定义配置是只读的，只作为主题设置的默认值来源。
     theme_settings: config.theme_options,
     latencyWindow: config.latency_window,
+    // 线路名可由站长在后端改；老后端不下发这几个字段，逐条回退到主题默认名。
+    carrierNames: resolveCarrierNames({
+      ct: config.custom_ct_name,
+      cu: config.custom_cu_name,
+      cm: config.custom_cm_name,
+      bd: config.custom_bd_name,
+    }),
     sys: {
       show_price: true,
       show_expire: true,

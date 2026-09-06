@@ -342,6 +342,12 @@ export function installDevMockApi() {
         verified: false,
         turnstile_verified: null,
         long_history_points: 120,
+        // 站长自定义的线路名（后端后加）。这里故意只改两条 + 留一条空串，
+        // 用来验「逐条回退到默认名」：cm 应该还显示「移动」。
+        custom_ct_name: "CT 电信",
+        custom_cu_name: "CU 联通",
+        custom_cm_name: "",
+        custom_bd_name: "BGP",
         // 后端 2026-08-24 起下发的窗口口径：20 点 / 2 小时。前端据 hours 定柱子跨度。
         latency_window: { points: 20, hours: 2 },
       });
