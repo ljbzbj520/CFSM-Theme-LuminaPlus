@@ -1397,27 +1397,36 @@ body::after {
   overflow-x: auto;
 }
 
-/* 要一眼看清「现在是哪一种」的分段控件（首页延迟的单线路 / 多线路就是）：占满整行、
-   两个按钮等宽，选中项用强调色实心。默认那套激活态只是一层很淡的 hover 底色，
-   两项并排时得盯着看才分得出选中的是哪个。 */
+/* 要一眼看清「现在是哪一种」的分段控件（首页延迟的单线路 / 多线路、默认线路都用它）：
+   占满整行、选项等宽。默认那套激活态只有一层很淡的 hover 底色，几项并排时得盯着看才分得出
+   选中的是哪个；这里改用和取色器 `.dark-depth-preset[data-active]` 同一套「强调色描边 +
+   9% 淡染」——比原来显眼，又不像实心蓝那样跳出整页的设计语言。
+   `flex-wrap` + 140px 基准宽：以后后端加线路（选项变 5、6 个）会自己换行，不需要横向滚动。 */
 .instance-segmented.is-prominent {
   display: flex;
+  flex-wrap: wrap;
   width: 100%;
   gap: 4px;
   padding: 4px;
 }
 
 .instance-segmented.is-prominent button {
-  flex: 1 1 0;
+  flex: 1 1 140px;
   min-height: 38px;
   padding: 0 14px;
+  border: 1px solid transparent; /* 占位，选中时才显色，免得换选项时高度跳一下 */
   font-size: 13px;
 }
 
 .instance-segmented.is-prominent button[data-active="true"] {
-  color: #fff;
-  background: linear-gradient(180deg, var(--accent-500), var(--accent-strong));
-  box-shadow: 0 8px 18px -12px var(--accent-strong);
+  border-color: color-mix(in srgb, var(--accent-500) 42%, var(--border));
+  background: color-mix(in srgb, var(--accent-500) 9%, var(--surface-elev));
+  color: var(--text-primary);
+}
+
+.instance-segmented.is-prominent button:not([data-active="true"]):hover:not(:disabled) {
+  background: var(--hover-bg);
+  color: var(--text-secondary);
 }
 
 .instance-segmented.is-prominent button:disabled {

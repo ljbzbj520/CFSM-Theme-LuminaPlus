@@ -2083,7 +2083,7 @@ export function ThemeManage() {
                       没单独指定的节点都走这条
                     </span>
                   </div>
-                  <div className="instance-segmented is-prominent is-scrollable" role="group" aria-label="默认线路">
+                  <div className="instance-segmented is-prominent" role="group" aria-label="默认线路">
                     {!sortedTasks.some(
                       (task) => task.id === draft.homepageDefaultPingTaskId,
                     ) && (
