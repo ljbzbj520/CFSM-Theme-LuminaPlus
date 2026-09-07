@@ -1,5 +1,7 @@
 import type { PingLiveSample } from "@/services/pingLiveStore";
 import {
+  CARRIER_KEYS,
+  CARRIER_LOSS_KEYS,
   CfsmServerSchema,
   EMPTY_CARRIER_PING,
   GpuEntrySchema,
@@ -36,6 +38,11 @@ export const DEFAULT_CARRIER_NAMES: CarrierNames = {
   cu: "联通",
   cm: "移动",
   bd: "BD",
+  // 后端 2.8.5 Beta4 起多出来的四个自定义槽位，后端自己的默认名就是 Node 1..4。
+  node_1: "Node 1",
+  node_2: "Node 2",
+  node_3: "Node 3",
+  node_4: "Node 4",
 };
 
 /**
@@ -60,12 +67,23 @@ export function resolveCarrierNames(
   return changed ? resolved : DEFAULT_CARRIER_NAMES;
 }
 
-/** 四条固定线路。CF-Server-Monitor 的探测点是固定的，没有可配置的 ping 任务。 */
+/**
+ * 后端固定的探测线路表，没有可配置的 ping 任务。id 就是线路序号（1..N），与 `CARRIER_KEYS`
+ * 同序 —— 设置页存的 `homepageMultiPingTaskIds` / `homepageDefaultPingTaskId` 都是这个 id。
+ *
+ * `field` / `lossField` 是 `/api/servers` 与历史行里的列名。**注意历史接口目前只有前四条**
+ * （2026-09-07 实测 `/api/history/all` 的行里没有 `ping_node_*`），所以 node_1..4 在详情页
+ * Ping 图表上没有数据点 —— `getPingRecords` 按实际观测到的线路过滤，不会画空线。
+ */
 export const CARRIER_TASKS = [
   { id: 1, key: "ct", name: DEFAULT_CARRIER_NAMES.ct, field: "ping_ct", lossField: "loss_ct" },
   { id: 2, key: "cu", name: DEFAULT_CARRIER_NAMES.cu, field: "ping_cu", lossField: "loss_cu" },
   { id: 3, key: "cm", name: DEFAULT_CARRIER_NAMES.cm, field: "ping_cm", lossField: "loss_cm" },
   { id: 4, key: "bd", name: DEFAULT_CARRIER_NAMES.bd, field: "ping_bd", lossField: "loss_bd" },
+  { id: 5, key: "node_1", name: DEFAULT_CARRIER_NAMES.node_1, field: "ping_node_1", lossField: "loss_node_1" },
+  { id: 6, key: "node_2", name: DEFAULT_CARRIER_NAMES.node_2, field: "ping_node_2", lossField: "loss_node_2" },
+  { id: 7, key: "node_3", name: DEFAULT_CARRIER_NAMES.node_3, field: "ping_node_3", lossField: "loss_node_3" },
+  { id: 8, key: "node_4", name: DEFAULT_CARRIER_NAMES.node_4, field: "ping_node_4", lossField: "loss_node_4" },
 ] as const;
 
 export type CarrierTask = (typeof CARRIER_TASKS)[number];
@@ -299,17 +317,18 @@ export function toNodeInfo(server: CfsmServer): NodeInfo {
   };
 }
 
+/** 按线路表逐条读列，加线路只改 CARRIER_TASKS，不用再来这里补字段。 */
+function carrierPingFrom(row: Record<string, unknown>): CarrierPingSnapshot {
+  const ping = { ...EMPTY_CARRIER_PING };
+  for (const task of CARRIER_TASKS) {
+    ping[task.key] = toNullableNumber(row[task.field]);
+    ping[CARRIER_LOSS_KEYS[task.key]] = toNullableNumber(row[task.lossField]);
+  }
+  return ping;
+}
+
 export function carrierPingFromServer(server: CfsmServer): CarrierPingSnapshot {
-  return {
-    ct: toNullableNumber(server.ping_ct),
-    cu: toNullableNumber(server.ping_cu),
-    cm: toNullableNumber(server.ping_cm),
-    bd: toNullableNumber(server.ping_bd),
-    lossCt: toNullableNumber(server.loss_ct),
-    lossCu: toNullableNumber(server.loss_cu),
-    lossCm: toNullableNumber(server.loss_cm),
-    lossBd: toNullableNumber(server.loss_bd),
-  };
+  return carrierPingFrom(server as unknown as Record<string, unknown>);
 }
 
 /**
@@ -334,34 +353,24 @@ export function parseLatencyWindow(server: CfsmServer): PingLiveSample[] {
     const time = normalizeTimestamp(point.ts);
     if (time <= 0) continue;
     const loss = lossByTs.get(time);
-    out.push({
-      time,
-      ping: {
-        ct: point.ct ?? null,
-        cu: point.cu ?? null,
-        cm: point.cm ?? null,
-        bd: point.bd ?? null,
-        lossCt: loss?.ct ?? null,
-        lossCu: loss?.cu ?? null,
-        lossCm: loss?.cm ?? null,
-        lossBd: loss?.bd ?? null,
-      },
-    });
+    const ping = { ...EMPTY_CARRIER_PING };
+    for (const key of CARRIER_KEYS) {
+      // 窗口点里的键和 CARRIER_KEYS 同名（ct/cu/cm/bd/node_1..4）；老后端没有的读成 null。
+      ping[key] = toNullableNumber(point[key]);
+      ping[CARRIER_LOSS_KEYS[key]] = loss ? toNullableNumber(loss[key]) : null;
+    }
+    out.push({ time, ping });
   }
   return out.sort((left, right) => left.time - right.time);
 }
 
 function sameCarrierPing(a: CarrierPingSnapshot, b: CarrierPingSnapshot): boolean {
-  return (
-    a.ct === b.ct &&
-    a.cu === b.cu &&
-    a.cm === b.cm &&
-    a.bd === b.bd &&
-    a.lossCt === b.lossCt &&
-    a.lossCu === b.lossCu &&
-    a.lossCm === b.lossCm &&
-    a.lossBd === b.lossBd
-  );
+  for (const key of CARRIER_KEYS) {
+    if (a[key] !== b[key]) return false;
+    const lossKey = CARRIER_LOSS_KEYS[key];
+    if (a[lossKey] !== b[lossKey]) return false;
+  }
+  return true;
 }
 
 function sameDiskIo(a: DiskIo | null, b: DiskIo | null): boolean {
@@ -612,16 +621,8 @@ export function historyRowsToPingSamples(rows: HistoryRow[]): PingLiveSample[] {
   for (const row of rows) {
     const time = normalizeTimestamp(row.timestamp);
     if (time <= 0) continue;
-    const ping: CarrierPingSnapshot = {
-      ct: toNullableNumber(row.ping_ct),
-      cu: toNullableNumber(row.ping_cu),
-      cm: toNullableNumber(row.ping_cm),
-      bd: toNullableNumber(row.ping_bd),
-      lossCt: toNullableNumber(row.loss_ct),
-      lossCu: toNullableNumber(row.loss_cu),
-      lossCm: toNullableNumber(row.loss_cm),
-      lossBd: toNullableNumber(row.loss_bd),
-    };
+    // 历史行目前只有前四条线路的列，node_1..4 读出来是 null（实测，见 CARRIER_TASKS 注释）。
+    const ping = carrierPingFrom(row as unknown as Record<string, unknown>);
     out.push({ time, ping });
   }
   return out.sort((left, right) => left.time - right.time);

@@ -168,6 +168,11 @@ function buildLatencyWindow(index: number, offline: boolean) {
       cu: offline ? null : Math.round(clamp(52 + Math.sin(phase + 1) * 18, 1, 400)),
       cm: offline ? null : Math.round(clamp(74 + Math.sin(phase + 2) * 26, 1, 400)),
       bd: offline ? null : Math.round(clamp(21 + Math.sin(phase + 3) * 9, 1, 400)),
+      // 后四条线路：node_3/4 恒 null，模拟后台没配探测目标的槽位。
+      node_1: offline ? null : Math.round(clamp(46 + Math.sin(phase + 4) * 14, 1, 400)),
+      node_2: offline ? null : Math.round(clamp(96 + Math.sin(phase + 5) * 30, 1, 400)),
+      node_3: null,
+      node_4: null,
     });
     loss.push({
       ts,
@@ -175,6 +180,10 @@ function buildLatencyWindow(index: number, offline: boolean) {
       cu: offline ? null : i % 9 === 0 ? 20 : 0,
       cm: offline ? null : 0,
       bd: offline ? null : 0,
+      node_1: offline ? null : 0,
+      node_2: offline ? null : i % 11 === 0 ? 15 : 0,
+      node_3: null,
+      node_4: null,
     });
   }
   return { ping, loss };
@@ -220,10 +229,20 @@ function buildServerPayload(server: MockServer, index: number) {
     ping_cu: offline ? null : Math.round(clamp(wave(index + 1, 29_000, 18, 52), 1, 400)),
     ping_cm: offline ? null : Math.round(clamp(wave(index + 2, 37_000, 26, 74), 1, 400)),
     ping_bd: offline ? null : Math.round(clamp(wave(index + 4, 31_000, 9, 21), 1, 400)),
+    // 后端 2.8.5 Beta4 起多出来的四条自定义线路。node_3/4 故意留空，
+    // 模拟「后台没给这两个槽位配探测目标」——主题应当显示「无样本」而不是画一条 0ms 的线。
+    ping_node_1: offline ? null : Math.round(clamp(wave(index + 5, 27_000, 14, 46), 1, 400)),
+    ping_node_2: offline ? null : Math.round(clamp(wave(index + 6, 41_000, 30, 96), 1, 400)),
+    ping_node_3: null,
+    ping_node_4: null,
     loss_ct: offline ? null : 0,
     loss_cu: offline ? null : index === 1 ? 4 : 0,
     loss_cm: offline ? null : 0,
     loss_bd: offline ? null : 0,
+    loss_node_1: offline ? null : 0,
+    loss_node_2: offline ? null : index === 2 ? 6 : 0,
+    loss_node_3: null,
+    loss_node_4: null,
 
     ram_total: server.ram_total,
     ram_used: ramUsed,
@@ -298,10 +317,18 @@ function buildHistory(serverId: string, hours: number) {
       ping_cu: Math.round(clamp(52 + Math.sin(phase + 1) * 18, 1, 400)),
       ping_cm: Math.round(clamp(74 + Math.sin(phase + 2) * 26, 1, 400)),
       ping_bd: Math.round(clamp(21 + Math.sin(phase + 3) * 9, 1, 400)),
+      ping_node_1: Math.round(clamp(46 + Math.sin(phase + 4) * 14, 1, 400)),
+      ping_node_2: Math.round(clamp(96 + Math.sin(phase + 5) * 30, 1, 400)),
+      ping_node_3: null,
+      ping_node_4: null,
       loss_ct: 0,
       loss_cu: i % 17 === 0 ? 20 : 0,
       loss_cm: 0,
       loss_bd: 0,
+      loss_node_1: 0,
+      loss_node_2: i % 23 === 0 ? 8 : 0,
+      loss_node_3: null,
+      loss_node_4: null,
       load_avg: "0.42 0.38 0.31",
       kernel_version: server.kernel_version,
     });
@@ -348,6 +375,10 @@ export function installDevMockApi() {
         custom_cu_name: "CU 联通",
         custom_cm_name: "",
         custom_bd_name: "BGP",
+        // 后四条：只给两个名字，另外两条留空验「逐条回退到 Node 3 / Node 4」。
+        node_1_name: "东京",
+        node_2_name: "法兰克福",
+        node_3_name: "",
         // 后端 2026-08-24 起下发的窗口口径：20 点 / 2 小时。前端据 hours 定柱子跨度。
         latency_window: { points: 20, hours: 2 },
       });

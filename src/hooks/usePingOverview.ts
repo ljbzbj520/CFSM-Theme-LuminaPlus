@@ -15,8 +15,8 @@ import {
   carrierTaskName,
   inferIntervalSeconds,
 } from "@/services/cfsm/mappers";
+import { CARRIER_LOSS_KEYS } from "@/types/cfsm";
 import type {
-  CarrierKey,
   CarrierNames,
   CarrierPingSnapshot,
   HomepagePingLine,
@@ -107,12 +107,8 @@ export function resolveHomepagePingRequestMode(
     : "single";
 }
 
-const LOSS_KEY_BY_CARRIER: Record<CarrierKey, keyof PingLiveSample["ping"]> = {
-  ct: "lossCt",
-  cu: "lossCu",
-  cm: "lossCm",
-  bd: "lossBd",
-};
+// 丢包字段名的唯一来源在 types/cfsm 的 CARRIER_LOSS_KEYS，加线路不用来这里补一遍。
+const LOSS_KEY_BY_CARRIER = CARRIER_LOSS_KEYS;
 
 /**
  * 把缓冲区里的样本转成某条线路的展示模型。

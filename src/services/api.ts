@@ -135,11 +135,16 @@ export async function getPublic(options?: RequestOptions): Promise<PublicConfig>
     theme_settings: config.theme_options,
     latencyWindow: config.latency_window,
     // 线路名可由站长在后端改；老后端不下发这几个字段，逐条回退到主题默认名。
+    // 后四条（2.8.5 Beta4 新增）的键名风格和前四条不一样，是 node_N_name。
     carrierNames: resolveCarrierNames({
       ct: config.custom_ct_name,
       cu: config.custom_cu_name,
       cm: config.custom_cm_name,
       bd: config.custom_bd_name,
+      node_1: config.node_1_name,
+      node_2: config.node_2_name,
+      node_3: config.node_3_name,
+      node_4: config.node_4_name,
     }),
     sys: {
       show_price: true,

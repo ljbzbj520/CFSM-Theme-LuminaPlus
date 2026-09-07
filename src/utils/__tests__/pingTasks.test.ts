@@ -63,9 +63,11 @@ describe("homepage ping task bindings", () => {
   });
 
   it("normalizes the global selection in display order, capped at the max line count", () => {
-    // 去重、保序、按上限截断。上限是四条（后端就四条线路），不再是写死的三条。
+    // 去重、保序、按上限截断。上限跟着后端线路数走（2.8.5 Beta4 起是八条），不再写死三条。
     expect(normalizeHomepageMultiPingTaskIds(["3", 1, 3, 2, 4])).toEqual([3, 1, 2, 4]);
-    expect(normalizeHomepageMultiPingTaskIds([4, 3, 2, 1, 5])).toEqual([4, 3, 2, 1]);
+    expect(normalizeHomepageMultiPingTaskIds([8, 7, 6, 5, 4, 3, 2, 1, 9])).toEqual([
+      8, 7, 6, 5, 4, 3, 2, 1,
+    ]);
   });
 
   it("treats any non-empty selection as configured (1 line is valid)", () => {

@@ -186,7 +186,32 @@ describe("getPublic", () => {
 
     const config = await getPublic();
 
-    expect(config.carrierNames).toEqual({ ct: "CT", cu: "CU", cm: "CM", bd: "BGP" });
+    expect(config.carrierNames).toEqual({
+      ...DEFAULT_CARRIER_NAMES,
+      ct: "CT",
+      cu: "CU",
+      cm: "CM",
+      bd: "BGP",
+    });
+  });
+
+  it("takes the four extra line names the backend added (node_N_name)", async () => {
+    // 后四条的键名风格和前四条不一样（node_N_name，不是 custom_*_name），别只接前四条。
+    fetchMock.mockImplementation(
+      jsonReply({
+        site_title: "S",
+        node_1_name: "东京",
+        node_3_name: "法兰克福",
+      }),
+    );
+
+    const config = await getPublic();
+
+    expect(config.carrierNames).toEqual({
+      ...DEFAULT_CARRIER_NAMES,
+      node_1: "东京",
+      node_3: "法兰克福",
+    });
   });
 
   it("falls back per carrier when only some names are customised", async () => {
@@ -198,9 +223,7 @@ describe("getPublic", () => {
     const config = await getPublic();
 
     expect(config.carrierNames).toEqual({
-      ct: "电信",
-      cu: "联通",
-      cm: "移动",
+      ...DEFAULT_CARRIER_NAMES,
       bd: "BGP",
     });
   });

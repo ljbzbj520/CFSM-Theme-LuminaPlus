@@ -64,6 +64,11 @@ export const LatencyPointSchema = z
     cu: nullableNumber,
     cm: nullableNumber,
     bd: nullableNumber,
+    // 后端 2.8.5 Beta4 起多出来的四个自定义槽位。老后端不下发，读出来是 undefined → null。
+    node_1: nullableNumber,
+    node_2: nullableNumber,
+    node_3: nullableNumber,
+    node_4: nullableNumber,
   })
   .passthrough();
 
@@ -109,10 +114,18 @@ export const CfsmServerSchema = z
     ping_cu: nullableNumber,
     ping_cm: nullableNumber,
     ping_bd: nullableNumber,
+    ping_node_1: nullableNumber,
+    ping_node_2: nullableNumber,
+    ping_node_3: nullableNumber,
+    ping_node_4: nullableNumber,
     loss_ct: nullableNumber,
     loss_cu: nullableNumber,
     loss_cm: nullableNumber,
     loss_bd: nullableNumber,
+    loss_node_1: nullableNumber,
+    loss_node_2: nullableNumber,
+    loss_node_3: nullableNumber,
+    loss_node_4: nullableNumber,
     // Workers 2.8.3 Beta2 起下发的一小时探测窗口；旧版本没有这两个字段。
     ping: z.array(LatencyPointSchema).optional(),
     loss: z.array(LatencyPointSchema).optional(),
@@ -242,6 +255,11 @@ export const SiteConfigSchema = z
     custom_cu_name: looseString.nullish().transform((v) => v ?? ""),
     custom_cm_name: looseString.nullish().transform((v) => v ?? ""),
     custom_bd_name: looseString.nullish().transform((v) => v ?? ""),
+    // 后端 2.8.5 Beta4 起多出来的四条自定义线路，名字键名和前四条不是一个风格。
+    node_1_name: looseString.nullish().transform((v) => v ?? ""),
+    node_2_name: looseString.nullish().transform((v) => v ?? ""),
+    node_3_name: looseString.nullish().transform((v) => v ?? ""),
+    node_4_name: looseString.nullish().transform((v) => v ?? ""),
     /**
      * 后端下发的首页延迟窗口口径：`points`=柱子格数、`hours`=窗口跨度（小时）。
      * 后端后加的字段，老后端 / 还没上线时缺席 —— 前端据 `hours` 定跨度，缺席就回退到
@@ -287,10 +305,18 @@ export const HistoryRowSchema = z
     ping_cu: nullableNumber,
     ping_cm: nullableNumber,
     ping_bd: nullableNumber,
+    ping_node_1: nullableNumber,
+    ping_node_2: nullableNumber,
+    ping_node_3: nullableNumber,
+    ping_node_4: nullableNumber,
     loss_ct: nullableNumber,
     loss_cu: nullableNumber,
     loss_cm: nullableNumber,
     loss_bd: nullableNumber,
+    loss_node_1: nullableNumber,
+    loss_node_2: nullableNumber,
+    loss_node_3: nullableNumber,
+    loss_node_4: nullableNumber,
     load_avg: looseString.default(""),
     kernel_version: looseString.default(""),
   })
@@ -372,41 +398,65 @@ export interface NodeMetrics {
   gpuPct: number;
   gpuName: string;
   diskIo: DiskIo | null;
-  /** 四线路实时延迟/丢包，缺测为 null。 */
+  /** 各线路实时延迟/丢包（见 CARRIER_KEYS），缺测为 null。 */
   ping: CarrierPingSnapshot;
   updatedAt: number;
 }
 
-export type CarrierKey = "ct" | "cu" | "cm" | "bd";
+/**
+ * 后端探测线路的 key，**顺序即线路顺序**（对应 task id 1..N）。
+ *
+ * 后端 2.8.5 Beta4 起从四条加到八条：原来的电信/联通/移动/BGP 之外多了四个自定义槽位
+ * （`/api/servers` 的 `ping_node_1..4`、窗口点里的 `node_1..4`、名字在 `/api/config` 的
+ * `node_1_name..node_4_name`）。**以后再加线路只改这张表**——线路名、快照类型、窗口解析、
+ * 紧凑存储、设置页的选项和上限全部由它推导（上限那条有 `pingTasks.test.ts` 的断言钉着）。
+ */
+export const CARRIER_KEYS = [
+  "ct",
+  "cu",
+  "cm",
+  "bd",
+  "node_1",
+  "node_2",
+  "node_3",
+  "node_4",
+] as const;
+
+export type CarrierKey = (typeof CARRIER_KEYS)[number];
 
 /**
- * 四条线路的显示名。id / key 由后端固定，只有名字可由站长改（`/api/config` 的
- * `custom_*_name`），默认名与归一化逻辑在 `services/cfsm/mappers` 的
+ * 快照里丢包字段的名字。原来四条是手写的 camelCase（`lossCt`…），新加的沿用同一风格；
+ * 单独一张表而不是模板字面量，是为了不动既有字段名（改名会波及一大片消费端与测试）。
+ */
+export const CARRIER_LOSS_KEYS = {
+  ct: "lossCt",
+  cu: "lossCu",
+  cm: "lossCm",
+  bd: "lossBd",
+  node_1: "lossNode1",
+  node_2: "lossNode2",
+  node_3: "lossNode3",
+  node_4: "lossNode4",
+} as const satisfies Record<CarrierKey, string>;
+
+export type CarrierLossKey = (typeof CARRIER_LOSS_KEYS)[CarrierKey];
+
+/**
+ * 线路的显示名。id / key 由后端固定，只有名字可由站长改（`/api/config` 的
+ * `custom_*_name` 与 `node_N_name`），默认名与归一化逻辑在 `services/cfsm/mappers` 的
  * `DEFAULT_CARRIER_NAMES` / `resolveCarrierNames`。
  */
 export type CarrierNames = Record<CarrierKey, string>;
 
-export interface CarrierPingSnapshot {
-  ct: number | null;
-  cu: number | null;
-  cm: number | null;
-  bd: number | null;
-  lossCt: number | null;
-  lossCu: number | null;
-  lossCm: number | null;
-  lossBd: number | null;
-}
+export type CarrierPingSnapshot = Record<CarrierKey, number | null> &
+  Record<CarrierLossKey, number | null>;
 
-export const EMPTY_CARRIER_PING: CarrierPingSnapshot = {
-  ct: null,
-  cu: null,
-  cm: null,
-  bd: null,
-  lossCt: null,
-  lossCu: null,
-  lossCm: null,
-  lossBd: null,
-};
+export const EMPTY_CARRIER_PING: CarrierPingSnapshot = Object.freeze(
+  Object.fromEntries([
+    ...CARRIER_KEYS.map((key) => [key, null]),
+    ...CARRIER_KEYS.map((key) => [CARRIER_LOSS_KEYS[key], null]),
+  ]),
+) as CarrierPingSnapshot;
 
 export interface ThemeSettings {
   defaultAppearance?: "system" | "light" | "dark";

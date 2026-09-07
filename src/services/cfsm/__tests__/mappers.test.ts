@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CfsmServerSchema, type CfsmServer } from "@/types/cfsm";
+import { CfsmServerSchema, EMPTY_CARRIER_PING, type CfsmServer } from "@/types/cfsm";
 import {
   carrierPingTasks,
   carrierTaskName,
@@ -319,23 +319,42 @@ describe("history conversion", () => {
     expect(records[1]).toMatchObject({ value: 30, loss: 50, client: "node-a" });
   });
 
-  it("names the four carrier tasks", () => {
+  it("names the eight carrier tasks", () => {
     expect(carrierPingTasks().map((task) => [task.id, task.name])).toEqual([
       [1, "电信"],
       [2, "联通"],
       [3, "移动"],
       [4, "BD"],
+      [5, "Node 1"],
+      [6, "Node 2"],
+      [7, "Node 3"],
+      [8, "Node 4"],
     ]);
   });
 
+  it("reads the four extra lines the backend added in 2.8.5 Beta4", () => {
+    // 窗口点用 node_1..4 这组键，当前值用 ping_node_1..4 / loss_node_1..4。
+    const window = parseLatencyWindow(
+      server({ ping: [{ ts: NOW, node_1: 12, node_4: 34 }], loss: [{ ts: NOW, node_1: 5 }] }),
+    );
+    expect(window[0]?.ping.node_1).toBe(12);
+    expect(window[0]?.ping.node_4).toBe(34);
+    expect(window[0]?.ping.lossNode1).toBe(5);
+    expect(window[0]?.ping.node_2).toBeNull();
+  });
+
   it("uses the site's custom carrier names when given", () => {
-    const names = resolveCarrierNames({ ct: "CT", bd: "BGP" });
+    const names = resolveCarrierNames({ ct: "CT", bd: "BGP", node_2: "东京" });
 
     expect(carrierPingTasks(names).map((task) => task.name)).toEqual([
       "CT",
       "联通",
       "移动",
       "BGP",
+      "Node 1",
+      "东京",
+      "Node 3",
+      "Node 4",
     ]);
     expect(carrierTaskName(1, names)).toBe("CT");
     expect(carrierTaskName(3, names)).toBe("移动");
@@ -382,7 +401,18 @@ describe("parseLatencyWindow", () => {
     expect(window).toHaveLength(2);
     expect(window[0]).toEqual({
       time: NOW - 120_000,
-      ping: { ct: 23, cu: 25, cm: 30, bd: 40, lossCt: 0, lossCu: 0, lossCm: 0, lossBd: 0 },
+      // 后四条线路（node_1..4）后端这次没给，读成 null。
+      ping: {
+        ...EMPTY_CARRIER_PING,
+        ct: 23,
+        cu: 25,
+        cm: 30,
+        bd: 40,
+        lossCt: 0,
+        lossCu: 0,
+        lossCm: 0,
+        lossBd: 0,
+      },
     });
     expect(window[1]?.ping.cm).toBeNull();
     expect(window[1]?.ping.lossCm).toBe(100);

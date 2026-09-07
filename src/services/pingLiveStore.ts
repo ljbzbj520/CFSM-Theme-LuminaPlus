@@ -1,3 +1,8 @@
+import {
+  CARRIER_KEYS,
+  CARRIER_LOSS_KEYS,
+  EMPTY_CARRIER_PING,
+} from "@/types/cfsm";
 import type { CarrierPingSnapshot } from "@/types/cfsm";
 
 /**
@@ -172,38 +177,32 @@ function samePing(a: CarrierPingSnapshot, b: CarrierPingSnapshot): boolean {
  * 持久化
  * ------------------------------------------------------------------ */
 
-/** 紧凑格式：[time, ct, cu, cm, bd, lossCt, lossCu, lossCm, lossBd] */
-type PersistedSample = [
-  number,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-  number | null,
-];
+/**
+ * 紧凑格式：`[time, ...各线路延迟, ...各线路丢包]`，两段都按 {@link CARRIER_KEYS} 的顺序。
+ *
+ * 线路从 4 条加到 8 条后长度由 9 变 17。**旧数据要继续读得出来**：`fromPersisted` 按
+ * 「前一半是延迟、后一半是丢包」由实际长度反推每段多长，读到 9 列的老记录就只填前四条，
+ * 其余留 null（换成新版本时缓冲区不至于整段作废、柱子空掉）。
+ */
+type PersistedSample = (number | null)[];
 
 function toPersisted(sample: PingLiveSample): PersistedSample {
   const { ping } = sample;
   return [
     sample.time,
-    ping.ct,
-    ping.cu,
-    ping.cm,
-    ping.bd,
-    ping.lossCt,
-    ping.lossCu,
-    ping.lossCm,
-    ping.lossBd,
+    ...CARRIER_KEYS.map((key) => ping[key]),
+    ...CARRIER_KEYS.map((key) => ping[CARRIER_LOSS_KEYS[key]]),
   ];
 }
 
 function fromPersisted(entry: unknown): PingLiveSample | null {
-  if (!Array.isArray(entry) || entry.length < 9) return null;
+  if (!Array.isArray(entry) || entry.length < 3) return null;
   const time = Number(entry[0]);
   if (!Number.isFinite(time) || time <= 0) return null;
+
+  // 老记录列数少：按实际长度算出当时存了几条线路，多出来的键留 null。
+  const storedCount = Math.min(CARRIER_KEYS.length, Math.floor((entry.length - 1) / 2));
+  if (storedCount <= 0) return null;
 
   const value = (index: number): number | null => {
     const raw = entry[index];
@@ -212,19 +211,13 @@ function fromPersisted(entry: unknown): PingLiveSample | null {
     return Number.isFinite(num) ? num : null;
   };
 
-  return {
-    time,
-    ping: {
-      ct: value(1),
-      cu: value(2),
-      cm: value(3),
-      bd: value(4),
-      lossCt: value(5),
-      lossCu: value(6),
-      lossCm: value(7),
-      lossBd: value(8),
-    },
-  };
+  const ping = { ...EMPTY_CARRIER_PING };
+  for (let i = 0; i < storedCount; i += 1) {
+    const key = CARRIER_KEYS[i];
+    ping[key] = value(1 + i);
+    ping[CARRIER_LOSS_KEYS[key]] = value(1 + storedCount + i);
+  }
+  return { time, ping };
 }
 
 function hydrate(): void {

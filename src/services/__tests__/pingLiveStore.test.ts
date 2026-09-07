@@ -158,6 +158,29 @@ describe("persistence", () => {
     expect(getPingHistorySnapshot("node-a")).toEqual([]);
   });
 
+  it("still reads a buffer written before the line count went 4 → 8", () => {
+    // 老版本存的是 9 列 [time, ct,cu,cm,bd, lossCt,lossCu,lossCm,lossBd]。升级后列数变 17，
+    // 按长度反推每段多长，读不出来的话整段缓冲作废、柱子会空一大片。
+    window.localStorage.setItem(
+      "cfsm-luminaplus:ping-live:v1",
+      JSON.stringify({
+        v: 1,
+        savedAt: NOW,
+        nodes: { "node-a": [[NOW - 60_000, 30, 40, 50, 60, 0, 1, 2, 3]] },
+      }),
+    );
+    resetPingLiveStore();
+
+    const [sample] = getPingHistorySnapshot("node-a");
+    expect(sample?.ping.ct).toBe(30);
+    expect(sample?.ping.bd).toBe(60);
+    expect(sample?.ping.lossCu).toBe(1);
+    expect(sample?.ping.lossBd).toBe(3);
+    // 老数据里没有的新线路留空，而不是把丢包值错位读成延迟。
+    expect(sample?.ping.node_1).toBeNull();
+    expect(sample?.ping.lossNode1).toBeNull();
+  });
+
   it("survives a corrupted cache entry", () => {
     window.localStorage.setItem("cfsm-luminaplus:ping-live:v1", "{not json");
     resetPingLiveStore();
@@ -468,7 +491,15 @@ describe("丢弃后端窗口里复制出来的格子", () => {
   function windowOf(values: Array<[number, number, number]>): PingLiveSample[] {
     return values.map(([ct, cu, cm], index) => ({
       time: NOW - (values.length - 1 - index) * STEP,
-      ping: { ct, cu, cm, bd: null, lossCt: 0, lossCu: 0, lossCm: 0, lossBd: null },
+      ping: {
+        ...EMPTY_CARRIER_PING,
+        ct,
+        cu,
+        cm,
+        lossCt: 0,
+        lossCu: 0,
+        lossCm: 0,
+      },
     }));
   }
 
