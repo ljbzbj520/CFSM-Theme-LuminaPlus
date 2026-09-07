@@ -378,6 +378,42 @@ describe("resolveCarrierNames", () => {
     });
   });
 
+  it("merges server-level overrides onto a custom base", () => {
+    const globalBase = {
+      ...DEFAULT_CARRIER_NAMES,
+      ct: "全局电信",
+      node_1: "全局节点1",
+    };
+    const resolved = resolveCarrierNames(
+      { ct: "单机电信", node_2: "单机节点2" },
+      globalBase,
+    );
+    expect(resolved).toEqual({
+      ...DEFAULT_CARRIER_NAMES,
+      ct: "单机电信",
+      node_1: "全局节点1",
+      node_2: "单机节点2",
+    });
+  });
+
+  it("extracts custom carrier names in toNodeInfo", () => {
+    const s = server({
+      custom_ct_name: "  香港CN2 ",
+      node_1_name: "日本BGP",
+    });
+    const info = toNodeInfo(s);
+    expect(info.carrierNames).toEqual({
+      ct: "香港CN2",
+      node_1: "日本BGP",
+    });
+  });
+
+  it("does not attach carrierNames if no custom names are present", () => {
+    const s = server();
+    const info = toNodeInfo(s);
+    expect(info.carrierNames).toBeUndefined();
+  });
+
   it("falls back to a placeholder for ids outside the four fixed carriers", () => {
     expect(carrierTaskName(9)).toBe("线路 #9");
   });

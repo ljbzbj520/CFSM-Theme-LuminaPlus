@@ -51,11 +51,12 @@ export const DEFAULT_CARRIER_NAMES: CarrierNames = {
  */
 export function resolveCarrierNames(
   overrides?: Partial<Record<CarrierKey, unknown>> | null,
+  base: CarrierNames = DEFAULT_CARRIER_NAMES,
 ): CarrierNames {
-  if (!overrides) return DEFAULT_CARRIER_NAMES;
-  const resolved = { ...DEFAULT_CARRIER_NAMES };
+  if (!overrides) return base;
+  const resolved = { ...base };
   let changed = false;
-  for (const key of Object.keys(DEFAULT_CARRIER_NAMES) as CarrierKey[]) {
+  for (const key of Object.keys(base) as CarrierKey[]) {
     const raw = overrides[key];
     if (typeof raw !== "string") continue;
     const trimmed = raw.trim();
@@ -64,7 +65,7 @@ export function resolveCarrierNames(
     changed = true;
   }
   // 没有任何覆盖时返回同一个常量，调用方（useMemo / 缓存键）可以按引用比较。
-  return changed ? resolved : DEFAULT_CARRIER_NAMES;
+  return changed ? resolved : base;
 }
 
 /**
@@ -278,6 +279,20 @@ export function isServerOnline(server: CfsmServer, now = Date.now()): boolean {
   return lastUpdated > 0 && now - lastUpdated < ONLINE_THRESHOLD_MS;
 }
 
+export function extractServerCarrierNames(server: CfsmServer): CarrierNames | undefined {
+  const overrides: Partial<Record<CarrierKey, unknown>> = {};
+  let hasOverride = false;
+  if (server.custom_ct_name?.trim()) { overrides.ct = server.custom_ct_name.trim(); hasOverride = true; }
+  if (server.custom_cu_name?.trim()) { overrides.cu = server.custom_cu_name.trim(); hasOverride = true; }
+  if (server.custom_cm_name?.trim()) { overrides.cm = server.custom_cm_name.trim(); hasOverride = true; }
+  if (server.custom_bd_name?.trim()) { overrides.bd = server.custom_bd_name.trim(); hasOverride = true; }
+  if (server.node_1_name?.trim()) { overrides.node_1 = server.node_1_name.trim(); hasOverride = true; }
+  if (server.node_2_name?.trim()) { overrides.node_2 = server.node_2_name.trim(); hasOverride = true; }
+  if (server.node_3_name?.trim()) { overrides.node_3 = server.node_3_name.trim(); hasOverride = true; }
+  if (server.node_4_name?.trim()) { overrides.node_4 = server.node_4_name.trim(); hasOverride = true; }
+  return hasOverride ? resolveCarrierNames(overrides) : undefined;
+}
+
 export function toNodeInfo(server: CfsmServer): NodeInfo {
   const gpus = parseGpuInfo(server.gpu_info);
   return {
@@ -314,6 +329,7 @@ export function toNodeInfo(server: CfsmServer): NodeInfo {
     ipv6: String(server.ip_v6) === "1" ? "1" : "",
     created_at: "",
     updated_at: String(normalizeTimestamp(server.last_updated) || ""),
+    carrierNames: extractServerCarrierNames(server),
   };
 }
 

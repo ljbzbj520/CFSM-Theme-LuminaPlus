@@ -1,4 +1,5 @@
 import type {
+  CarrierNames,
   CfsmServer,
   NodeInfo,
   NodeMetrics,
@@ -278,6 +279,21 @@ function shallowEqualMetrics(a: NodeMetrics, b: NodeMetrics) {
   );
 }
 
+function shallowEqualCarrierNames(a?: CarrierNames, b?: CarrierNames) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.ct === b.ct &&
+    a.cu === b.cu &&
+    a.cm === b.cm &&
+    a.bd === b.bd &&
+    a.node_1 === b.node_1 &&
+    a.node_2 === b.node_2 &&
+    a.node_3 === b.node_3 &&
+    a.node_4 === b.node_4
+  );
+}
+
 function shallowEqualNodeInfo(a: NodeInfo, b: NodeInfo) {
   return (
     a.uuid === b.uuid &&
@@ -307,7 +323,8 @@ function shallowEqualNodeInfo(a: NodeInfo, b: NodeInfo) {
     a.traffic_limit_type === b.traffic_limit_type &&
     a.traffic_reset_day === b.traffic_reset_day &&
     a.report_interval === b.report_interval &&
-    a.agent_version === b.agent_version
+    a.agent_version === b.agent_version &&
+    shallowEqualCarrierNames(a.carrierNames, b.carrierNames)
     // updated_at 是未展示的心跳字段，不应触发整个节点列表重渲染。
   );
 }

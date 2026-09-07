@@ -245,11 +245,11 @@ function getCachedLines(
   return lines;
 }
 
-/** 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼四个名字。 */
+/** 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼所有名字。 */
 function carrierNamesKey(names: CarrierNames): string {
   return names === DEFAULT_CARRIER_NAMES
     ? "default"
-    : `${names.ct}|${names.cu}|${names.cm}|${names.bd}`;
+    : `${names.ct}|${names.cu}|${names.cm}|${names.bd}|${names.node_1 ?? ""}|${names.node_2 ?? ""}|${names.node_3 ?? ""}|${names.node_4 ?? ""}`;
 }
 
 function usePingSamples(uuid: string, enabled: boolean): readonly PingLiveSample[] {
@@ -324,16 +324,18 @@ export function useNodePingOverview(uuid: string, enabled = true): PingOverviewI
 export function useNodePingOverviewLines(
   uuid: string,
   enabled = true,
+  customCarrierNames?: CarrierNames,
 ): HomepagePingLine[] {
   const samples = usePingSamples(uuid, enabled);
   const { homepageMultiPingTaskIds } = useThemeSettings();
   const carrierNames = useCarrierNames();
+  const effectiveNames = customCarrierNames ?? carrierNames;
   return useMemo(
     () =>
       enabled
-        ? getCachedLines(uuid, homepageMultiPingTaskIds, samples, undefined, carrierNames)
+        ? getCachedLines(uuid, homepageMultiPingTaskIds, samples, undefined, effectiveNames)
         : EMPTY_PING_LINES,
-    [carrierNames, enabled, homepageMultiPingTaskIds, samples, uuid],
+    [effectiveNames, enabled, homepageMultiPingTaskIds, samples, uuid],
   );
 }
 

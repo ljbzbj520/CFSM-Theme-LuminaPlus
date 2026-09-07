@@ -3,8 +3,9 @@ import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Eye, EyeOff, RefreshCw } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
+import { useNodeMeta } from "@/hooks/useNode";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
-import { carrierTaskName } from "@/services/cfsm/mappers";
+import { carrierTaskName, resolveCarrierNames } from "@/services/cfsm/mappers";
 import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
 import {
   buildChartTooltipHooks,
@@ -149,17 +150,22 @@ export function PingChart({
     time: "",
   });
   const isDark = resolvedAppearance === "dark";
-  // 线路名以 `/api/config` 的自定义名为准：历史查询是按 uuid+hours 缓存的，站长改名
+  // 线路名以单机自定义名或 `/api/config` 的自定义名为准：历史查询是按 uuid+hours 缓存的，站长改名
   // （或 config 晚于历史返回）不会让那份缓存重算，所以在这里按当前名字重新贴一遍。
   const carrierNames = useCarrierNames();
+  const nodeMeta = useNodeMeta(uuid);
+  const resolvedCarrierNames = useMemo(
+    () => resolveCarrierNames(nodeMeta?.carrierNames, carrierNames),
+    [carrierNames, nodeMeta?.carrierNames],
+  );
   // API 顺序与后台任务权重一致，响应本身不一定包含可重排的权重。
   const tasks = useMemo(
     () =>
       (data?.tasks ?? []).map((task) => ({
         ...task,
-        name: carrierTaskName(task.id, carrierNames),
+        name: carrierTaskName(task.id, resolvedCarrierNames),
       })),
-    [carrierNames, data],
+    [data?.tasks, resolvedCarrierNames],
   );
   const taskLabels = useMemo(() => {
     const counts = new Map<string, number>();

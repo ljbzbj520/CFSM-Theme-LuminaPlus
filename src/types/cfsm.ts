@@ -126,6 +126,14 @@ export const CfsmServerSchema = z
     loss_node_2: nullableNumber,
     loss_node_3: nullableNumber,
     loss_node_4: nullableNumber,
+    custom_ct_name: looseString.optional(),
+    custom_cu_name: looseString.optional(),
+    custom_cm_name: looseString.optional(),
+    custom_bd_name: looseString.optional(),
+    node_1_name: looseString.optional(),
+    node_2_name: looseString.optional(),
+    node_3_name: looseString.optional(),
+    node_4_name: looseString.optional(),
     // Workers 2.8.3 Beta2 起下发的一小时探测窗口；旧版本没有这两个字段。
     ping: z.array(LatencyPointSchema).optional(),
     loss: z.array(LatencyPointSchema).optional(),
@@ -366,6 +374,7 @@ export interface NodeInfo {
   ipv6: string;
   created_at: string;
   updated_at: string;
+  carrierNames?: CarrierNames;
 }
 
 /** 节点实时指标。所有容量字段为字节，速率为字节/秒。 */
