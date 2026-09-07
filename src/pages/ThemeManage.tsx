@@ -2067,71 +2067,56 @@ export function ThemeManage() {
                     </>
                   )}
                 </button>
-              ) : (
-                <label
-                  htmlFor="homepage-default-ping-task"
-                  className="flex shrink-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]"
-                >
-                  默认线路
-                  <select
-                    id="homepage-default-ping-task"
-                    value={draft.homepageDefaultPingTaskId}
-                    onChange={(event) =>
-                      patch("homepageDefaultPingTaskId", Number(event.target.value))
-                    }
-                    className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
-                  >
-                    {!sortedTasks.some(
-                      (task) => task.id === draft.homepageDefaultPingTaskId,
-                    ) && (
-                      <option value={draft.homepageDefaultPingTaskId}>
-                        任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
-                      </option>
-                    )}
-                    {sortedTasks.map((task) => (
-                      <option key={task.id} value={task.id}>
-                        {task.name || `任务 #${task.id}`}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
+              ) : null}
             </div>
 
             {singleLineSettingsOpen && (
               <>
-                {draft.enableHomepageMultiPing && (
-                  <label
-                    htmlFor="homepage-default-ping-task"
-                    className="mt-4 flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-secondary)]"
-                  >
-                    默认线路
-                    <select
-                      id="homepage-default-ping-task"
-                      value={draft.homepageDefaultPingTaskId}
-                      onChange={(event) =>
-                        patch("homepageDefaultPingTaskId", Number(event.target.value))
-                      }
-                      className="surface-inset w-[180px] px-3 py-2 text-[13px] text-[var(--text-primary)] outline-none"
-                    >
-                      {!sortedTasks.some(
-                        (task) => task.id === draft.homepageDefaultPingTaskId,
-                      ) && (
-                        <option value={draft.homepageDefaultPingTaskId}>
-                          任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
-                        </option>
-                      )}
-                      {sortedTasks.map((task) => (
-                        <option key={task.id} value={task.id}>
+                {/* 默认线路：原来是标题行右端一个窄下拉，混在一堆文字里看不见。挪到正文、
+                    用和模式切换同一套整行分段控件，选中项强调色实心。 */}
+                <div className="mt-4 border-t border-[var(--hairline)] pt-4">
+                  <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-[12px] font-medium text-[var(--text-secondary)]">
+                      默认线路
+                    </span>
+                    <span className="text-[11px] text-[var(--text-tertiary)]">
+                      没单独指定的节点都走这条
+                    </span>
+                  </div>
+                  <div className="instance-segmented is-prominent is-scrollable" role="group" aria-label="默认线路">
+                    {!sortedTasks.some(
+                      (task) => task.id === draft.homepageDefaultPingTaskId,
+                    ) && (
+                      <button
+                        type="button"
+                        data-active="true"
+                        aria-pressed
+                        disabled
+                        className="inline-flex items-center justify-center"
+                      >
+                        任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                      </button>
+                    )}
+                    {sortedTasks.map((task) => {
+                      const active = task.id === draft.homepageDefaultPingTaskId;
+                      return (
+                        <button
+                          key={task.id}
+                          type="button"
+                          data-active={active ? "true" : "false"}
+                          aria-pressed={active}
+                          onClick={() => patch("homepageDefaultPingTaskId", task.id)}
+                          className="inline-flex items-center justify-center"
+                        >
                           {task.name || `任务 #${task.id}`}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-                  没在下面单独指定线路的节点都显示默认线路，新加的节点也自动跟着它，不用回来一台台绑。
-                </p>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+                    新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的逐节点指定。
+                  </p>
+                </div>
 
                 <div className="mt-4 border-t border-[var(--hairline)] pt-4">
                   <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
