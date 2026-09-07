@@ -14,7 +14,7 @@ import type { CarrierPingSnapshot } from "@/types/cfsm";
  *    探测窗口 —— 一批带真实时间戳的槽位，由 `seedPingHistory` 灌入。窗口跨度由后端决定、
  *    这里不写死：2026-08-24 起后端从 D1 取 **2 小时**（20 个点），此前是 1 小时。跨度直接
  *    跟着时间戳走，后端再调整前端不用改常量（见 {@link PING_WINDOW_MS} 只作基准/上限用）。
- * 2. **实时累积**：`/api/servers` 与 WebSocket 推送里一直都有 `ping_ct/cu/cm/bd` 与 `loss_*`
+ * 2. **实时累积**：`/api/servers` 与 WebSocket 推送里一直都有各线路的 `ping_*` 与 `loss_*`
  *    当前值，由 `recordPingSample` 逐点累积。兜底旧版后端（那时没有窗口字段，只能从零攒），
  *    以及新版后端窗口停止滑动时补中间的空洞。
  *
@@ -79,7 +79,7 @@ const DEFAULT_WINDOW_STEP_MS = 120_000;
  * 判定后端窗口「这一段是复制出来的」所需的连续相同格数。
  *
  * 后端 `buildFixedLatencySeries` 用无上限最近邻填满 30 格，桶里缺的那些格全是同一个样本的
- * 复印件（详见 CLAUDE.md）。四条线路的延迟**和**丢包同时逐字节相同、还连着好几格，
+ * 复印件（详见 CLAUDE.md）。所有线路的延迟**和**丢包同时逐字节相同、还连着好几格，
  * 真探测不会这样 —— 取 4 格（8 分钟）作为门槛，宁可漏判也不误杀。
  */
 const BACKFILL_RUN_MIN_LENGTH = 4;
@@ -116,10 +116,13 @@ const listenersByUuid = new Map<string, Set<Listener>>();
 let hydrated = false;
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 
+/**
+ * 这个样本有没有任何一条线路的实测值。**要看全部线路**：只看前四条的话，站点如果只给
+ * 后四条（v1.2.14 新增的自定义槽位）配了探测目标，样本会被当成空值全程丢掉 ——
+ * `recordPingSample` 直接 return、快照里也读不到（见下面三处调用）。
+ */
 function hasAnyValue(ping: CarrierPingSnapshot): boolean {
-  return (
-    ping.ct != null || ping.cu != null || ping.cm != null || ping.bd != null
-  );
+  return CARRIER_KEYS.some((key) => ping[key] != null);
 }
 
 function isFresh(sample: PingLiveSample, now: number): boolean {
@@ -160,17 +163,20 @@ function thinSamples(samples: readonly PingLiveSample[]): PingLiveSample[] {
   return sparse;
 }
 
+/**
+ * 全部线路（含 v1.2.14 新增的后四条）逐条比。**不能只比前四条**：这个函数同时管着三件事 ——
+ * ① `recordPingSample` 的「值变了就记一个样本」；② `sameSeries` 判断重算结果有没有变；
+ * ③ `dropBackfilledRuns` 判断连续几格是不是复印件。漏比后四条的后果分别是：新线路的探测落地
+ * 不记样本、只有新线路变化的重算结果被旧缓存顶掉、以及**前四条恰好相同就被当成复印段整段丢掉**
+ * （比较的字段越少越容易误判）。
+ */
 function samePing(a: CarrierPingSnapshot, b: CarrierPingSnapshot): boolean {
-  return (
-    a.ct === b.ct &&
-    a.cu === b.cu &&
-    a.cm === b.cm &&
-    a.bd === b.bd &&
-    a.lossCt === b.lossCt &&
-    a.lossCu === b.lossCu &&
-    a.lossCm === b.lossCm &&
-    a.lossBd === b.lossBd
-  );
+  for (const key of CARRIER_KEYS) {
+    if (a[key] !== b[key]) return false;
+    const lossKey = CARRIER_LOSS_KEYS[key];
+    if (a[lossKey] !== b[lossKey]) return false;
+  }
+  return true;
 }
 
 /* ------------------------------------------------------------------ *
@@ -488,7 +494,7 @@ function sameSeries(a: readonly PingLiveSample[], b: readonly PingLiveSample[]):
  * 没有距离上限）复制过来，时间戳照 2 分钟网格铺满一小时。于是一台刚加进来 7 分钟的节点，
  * 窗口里也会有一整个小时的「数据」—— 线上实测：30 格全是 `1/1/1`，而历史表里只有 13 行、跨度 6.3 分钟。
  *
- * 复印件的特征是**连续若干格逐字节相同**（四条线路的延迟和丢包同时一模一样）。真探测做不到这个，
+ * 复印件的特征是**连续若干格逐字节相同**（所有线路的延迟和丢包同时一模一样）。真探测做不到这个，
  * 所以按 {@link BACKFILL_RUN_MIN_LENGTH} 格为界把整段丢掉 —— 留空比画一段编出来的数据诚实，
  * 图表对没值的槽位本来就是留白的，丢包加权平均也不会再被这些格子带偏。
  *

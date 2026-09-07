@@ -158,6 +158,27 @@ describe("persistence", () => {
     expect(getPingHistorySnapshot("node-a")).toEqual([]);
   });
 
+  it("keeps samples from a site that only configured the new lines", () => {
+    // 站点可能只给后四条自定义槽位配了探测目标，前四条全空。判「有没有值」只看前四条的话，
+    // recordPingSample 会直接 return，这台节点一个样本都攒不出来、柱子全空。
+    recordPingSample("node-only-new", NOW, ping({ node_1: 42, lossNode1: 0 }));
+
+    const [sample] = getPingHistorySnapshot("node-only-new");
+    expect(sample?.ping.node_1).toBe(42);
+  });
+
+  it("records a new sample when only a new line's value changed", () => {
+    // 「值变了就记一个样本」靠 samePing 判断。只比前四条的话，后四条的探测落地会被判成
+    // 「没变」而不记，新线路的数据被系统性漏采。
+    recordPingSample("node-mixed", NOW, ping({ ct: 30, node_1: 40 }));
+    vi.advanceTimersByTime(10_000);
+    recordPingSample("node-mixed", NOW + 10_000, ping({ ct: 30, node_1: 55 }));
+
+    const samples = getPingHistorySnapshot("node-mixed");
+    expect(samples).toHaveLength(2);
+    expect(samples[1]?.ping.node_1).toBe(55);
+  });
+
   it("still reads a buffer written before the line count went 4 → 8", () => {
     // 老版本存的是 9 列 [time, ct,cu,cm,bd, lossCt,lossCu,lossCm,lossBd]。升级后列数变 17，
     // 按长度反推每段多长，读不出来的话整段缓冲作废、柱子会空一大片。
