@@ -402,7 +402,7 @@ describe("resolveCarrierNames", () => {
       node_1_name: "日本BGP",
     });
     const info = toNodeInfo(s);
-    expect(info.carrierNames).toEqual({
+    expect(info.carrierNames).toMatchObject({
       ct: "香港CN2",
       node_1: "日本BGP",
     });

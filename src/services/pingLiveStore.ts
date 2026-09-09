@@ -76,13 +76,10 @@ const MIN_THINNED_GAP_MS = PING_WINDOW_MS / MAX_SAMPLES_PER_NODE;
 /** 后端窗口的网格步长推不出来时的兜底：实测是 2 分钟一格。 */
 const DEFAULT_WINDOW_STEP_MS = 120_000;
 /**
- * 判定后端窗口「这一段是复制出来的」所需的连续相同格数。
- *
- * 后端 `buildFixedLatencySeries` 用无上限最近邻填满 30 格，桶里缺的那些格全是同一个样本的
- * 复印件（详见 CLAUDE.md）。所有线路的延迟**和**丢包同时逐字节相同、还连着好几格，
- * 真探测不会这样 —— 取 4 格（8 分钟）作为门槛，宁可漏判也不误杀。
+ * 判定后端窗口「整段大面积复制出来」所需的连续相同格数。
+ * 调高到 25 格（覆盖几乎整段窗口），避免误伤 IPLC 专线等高稳定性网络 4~8 格连续相同但真实的正常探测。
  */
-const BACKFILL_RUN_MIN_LENGTH = 4;
+const BACKFILL_RUN_MIN_LENGTH = 25;
 /** 本地样本间隔推不出来时的兜底。 */
 const DEFAULT_LOCAL_CADENCE_MS = 40_000;
 /**
