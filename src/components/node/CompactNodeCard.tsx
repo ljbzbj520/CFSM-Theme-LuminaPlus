@@ -609,6 +609,23 @@ function CompactTrafficBar({
     uptimeLabel || null,
   ].filter(Boolean);
 
+  const resetContent = resetLabel ? (
+    traffic.resetDays === 0 ? (
+      <span className="compact-node-traffic-reset">
+        <strong className="compact-node-traffic-reset-num">今日</strong>
+        <span>重置</span>
+      </span>
+    ) : traffic.resetDays != null ? (
+      <span className="compact-node-traffic-reset">
+        <span>余</span>
+        <strong className="compact-node-traffic-reset-num">{traffic.resetDays}</strong>
+        <span>天重置</span>
+      </span>
+    ) : (
+      <span className="compact-node-traffic-reset">{resetLabel}</span>
+    )
+  ) : null;
+
   return (
     <div
       className="compact-node-traffic"
@@ -621,9 +638,7 @@ function CompactTrafficBar({
             <span className="compact-node-traffic-label">
               <Database size={12} strokeWidth={2.1} />
               <span>流量</span>
-              {resetLabel && (
-                <span className="compact-node-traffic-reset">{resetLabel}</span>
-              )}
+              {resetContent}
             </span>
             <div className="compact-node-gauge-track" aria-hidden />
             <span className="compact-node-traffic-uptime">{uptimeLabel}</span>
@@ -635,9 +650,7 @@ function CompactTrafficBar({
               <span className="compact-node-traffic-label">
                 <Database size={12} strokeWidth={2.1} />
                 <span>流量</span>
-                {resetLabel && (
-                  <span className="compact-node-traffic-reset">{resetLabel}</span>
-                )}
+                {resetContent}
               </span>
               <span className="compact-node-traffic-value">{traffic.detail}</span>
             </div>
