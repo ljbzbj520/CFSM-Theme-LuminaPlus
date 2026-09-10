@@ -504,13 +504,13 @@ function CompactNodeInfoStrip({
         color="var(--progress-cpu)"
       >
         <CompactInfoRow
-          icon={<ArrowUp size={12} strokeWidth={2.3} />}
+          icon={<ArrowUp size={12} strokeWidth={2.5} />}
           value={upRate.value}
           unit={upRate.unit}
           color={speedRateColor(upRate.unit)}
         />
         <CompactInfoRow
-          icon={<ArrowDown size={12} strokeWidth={2.3} />}
+          icon={<ArrowDown size={12} strokeWidth={2.5} />}
           value={downRate.value}
           unit={downRate.unit}
           color={speedRateColor(downRate.unit)}
