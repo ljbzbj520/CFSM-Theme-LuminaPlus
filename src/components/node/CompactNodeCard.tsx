@@ -584,9 +584,11 @@ function CompactNodeInfoStrip({
 function CompactTrafficBar({
   traffic,
   uptimeLabel,
+  resetLabel,
 }: {
   traffic: TrafficDisplay;
   uptimeLabel: string;
+  resetLabel?: string;
 }) {
   // 用量非零但极小时,下限填充"一段的 TRAFFIC_SLIVER_RATIO"(段内一道细边),而不是整段——
   // 否则低用量节点(如 0.01%)会被夸张成快 5.6%。fraction 为 0 时保持全灭。
@@ -599,11 +601,19 @@ function CompactTrafficBar({
     "--compact-gauge-fill": `${fillFraction * 100}%`,
   } as CSSProperties;
 
+  const tooltipParts = [
+    "流量",
+    traffic.typeLabel,
+    traffic.detail,
+    resetLabel || null,
+    uptimeLabel || null,
+  ].filter(Boolean);
+
   return (
     <div
       className="compact-node-traffic"
       style={style}
-      title={`流量 · ${traffic.typeLabel} · ${traffic.detail}${uptimeLabel ? ` · ${uptimeLabel}` : ""}`}
+      title={tooltipParts.join(" · ")}
     >
       <div className={clsx("compact-node-traffic-body", uptimeLabel && "has-uptime")}>
         {uptimeLabel ? (
@@ -611,6 +621,9 @@ function CompactTrafficBar({
             <span className="compact-node-traffic-label">
               <Database size={12} strokeWidth={2.1} />
               <span>流量</span>
+              {resetLabel && (
+                <span className="compact-node-traffic-reset">{resetLabel}</span>
+              )}
             </span>
             <div className="compact-node-gauge-track" aria-hidden />
             <span className="compact-node-traffic-uptime">{uptimeLabel}</span>
@@ -622,6 +635,9 @@ function CompactTrafficBar({
               <span className="compact-node-traffic-label">
                 <Database size={12} strokeWidth={2.1} />
                 <span>流量</span>
+                {resetLabel && (
+                  <span className="compact-node-traffic-reset">{resetLabel}</span>
+                )}
               </span>
               <span className="compact-node-traffic-value">{traffic.detail}</span>
             </div>
@@ -732,9 +748,11 @@ export const CompactNodeCard = memo(function CompactNodeCard({
   const showTrafficTotal = themeSettings.isReady && themeSettings.compactShowTrafficTotal;
   const showBilling = themeSettings.isReady && themeSettings.compactShowBilling;
   const showUptime = themeSettings.isReady && themeSettings.compactShowUptime;
+  const showTrafficReset = themeSettings.isReady && themeSettings.compactShowTrafficReset;
   const showConnections = themeSettings.isReady && themeSettings.showConnections;
   // 开关关闭或节点离线时,完全跳过格式化工作。
   const uptimeLabel = showUptime && !isOffline ? formatCompactUptime(node.uptime) : "";
+  const resetLabel = showTrafficReset ? traffic.resetLabel : undefined;
 
   return (
     <article className={clsx("compact-node-card", isOffline && "is-offline")}>
@@ -756,7 +774,11 @@ export const CompactNodeCard = memo(function CompactNodeCard({
         expireColor={expireColor}
         renewalPrice={renewalPrice}
       />
-      <CompactTrafficBar traffic={traffic} uptimeLabel={uptimeLabel} />
+      <CompactTrafficBar
+        traffic={traffic}
+        uptimeLabel={uptimeLabel}
+        resetLabel={resetLabel}
+      />
       {homepagePingLines.length > 0 ? (
         <MultiPingStatus
           lines={homepagePingLines}

@@ -24,6 +24,13 @@ describe("normalizeThemeSettings", () => {
     expect(normalizeThemeSettings({ showOverviewRatings: false }).showOverviewRatings).toBe(false);
   });
 
+  it("defaults compactShowTrafficReset on unless explicitly disabled", () => {
+    expect(normalizeThemeSettings({}).compactShowTrafficReset).toBe(true);
+    expect(
+      normalizeThemeSettings({ compactShowTrafficReset: false }).compactShowTrafficReset,
+    ).toBe(false);
+  });
+
   it("normalizes homepage multi-ping tasks while preserving an enabled draft for repair", () => {
     // 默认开多线路模式，并补上电信/联通/移动三条 —— 一条任务 id 都没有会静默退回单线路。
     const untouched = normalizeThemeSettings({});

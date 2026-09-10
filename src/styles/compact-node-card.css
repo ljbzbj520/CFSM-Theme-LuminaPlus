@@ -342,6 +342,17 @@
   color: var(--compact-gauge-color);
 }
 
+.compact-node-traffic-reset {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-tertiary);
+  font-size: 10.5px;
+  font-weight: 550;
+  line-height: 1.15;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 .compact-node-traffic-body.has-uptime > .compact-node-traffic-label {
   grid-column: 1;
   grid-row: 1;

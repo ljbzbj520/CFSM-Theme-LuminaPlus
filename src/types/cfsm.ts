@@ -498,6 +498,7 @@ export interface ThemeSettings {
   compactShowTrafficTotal?: boolean;
   compactShowBilling?: boolean;
   compactShowUptime?: boolean;
+  compactShowTrafficReset?: boolean;
   showConnections?: boolean;
   hiddenNodes?: string[];
   costIgnoredNodes?: string[];

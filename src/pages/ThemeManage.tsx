@@ -287,6 +287,7 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
     compactShowTrafficTotal: settings.compactShowTrafficTotal,
     compactShowBilling: settings.compactShowBilling,
     compactShowUptime: settings.compactShowUptime,
+    compactShowTrafficReset: settings.compactShowTrafficReset,
     showConnections: settings.showConnections,
     hiddenNodes: settings.hiddenNodes,
     costIgnoredNodes: settings.costIgnoredNodes,
@@ -1764,6 +1765,13 @@ export function ThemeManage() {
               title="显示在线时间"
               desc="在小卡片流量栏右侧展示在线时长。默认开启。"
               checked={draft.compactShowUptime}
+              onPatch={patch}
+            />
+            <ToggleRow
+              field="compactShowTrafficReset"
+              title="显示流量重置倒计时"
+              desc="在小卡片流量栏展示剩余重置天数。默认开启。"
+              checked={draft.compactShowTrafficReset}
               onPatch={patch}
             />
           </div>

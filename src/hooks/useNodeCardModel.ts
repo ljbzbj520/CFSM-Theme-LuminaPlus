@@ -29,7 +29,13 @@ import {
   lossHeatColor,
   trafficUsageColor,
 } from "@/utils/metricTone";
-import { resolveTrafficUsage, trafficTypeLabel, type TrafficDisplay } from "@/utils/traffic";
+import {
+  formatTrafficResetDays,
+  getTrafficResetDays,
+  resolveTrafficUsage,
+  trafficTypeLabel,
+  type TrafficDisplay,
+} from "@/utils/traffic";
 import { resolveOsInfo } from "@/components/ui/OsLogo";
 import {
   hasHomepagePingTaskBinding,
@@ -269,12 +275,16 @@ export function useNodeCardModel(
     const trafficColor = trafficUsage.unlimited
       ? "var(--status-success)"
       : trafficUsageColor(trafficUsage.fraction);
+    const trafficResetDays = getTrafficResetDays(meta.traffic_reset_day, now);
+    const trafficResetLabel = formatTrafficResetDays(meta.traffic_reset_day, now) ?? undefined;
     const traffic: TrafficDisplay = {
       fraction: trafficUsage.fraction,
       color: trafficColor,
       remainingLabel: trafficUsage.unlimited ? "∞" : formatBytes(trafficUsage.remaining),
       detail: `${trafficUsedLabel} / ${trafficLimitLabel}`,
       typeLabel: trafficTypeLabel(meta.traffic_limit_type),
+      resetLabel: trafficResetLabel,
+      resetDays: trafficResetDays,
     };
 
     return {
@@ -302,5 +312,6 @@ export function useNodeCardModel(
     ping,
     pingBuckets,
     trafficTrend,
+    now,
   ]);
 }
