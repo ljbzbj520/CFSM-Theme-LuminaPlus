@@ -119,6 +119,6 @@ export function formatTrafficResetDays(
   const days = getTrafficResetDays(resetDay, nowMs);
   if (days == null) return null;
   if (days === 0) return "今日重置";
-  return `余 ${days}天重置`;
+  return `余${days}天重置`;
 }
 

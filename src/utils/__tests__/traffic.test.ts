@@ -94,7 +94,7 @@ describe("getTrafficResetDays & formatTrafficResetDays", () => {
     // 2026-09-10, reset on 15th -> 5 days remaining
     const now = new Date(2026, 8, 10, 12, 0, 0).getTime();
     expect(getTrafficResetDays(15, now)).toBe(5);
-    expect(formatTrafficResetDays(15, now)).toBe("余 5天重置");
+    expect(formatTrafficResetDays(15, now)).toBe("余5天重置");
   });
 
   it("returns 0 and '今日重置' when reset day is today", () => {
@@ -107,21 +107,21 @@ describe("getTrafficResetDays & formatTrafficResetDays", () => {
     // 2026-09-10 (Sept has 30 days), reset on 1st -> (30 - 10) + 1 = 21 days
     const now = new Date(2026, 8, 10, 12, 0, 0).getTime();
     expect(getTrafficResetDays(1, now)).toBe(21);
-    expect(formatTrafficResetDays(1, now)).toBe("余 21天重置");
+    expect(formatTrafficResetDays(1, now)).toBe("余21天重置");
   });
 
   it("handles month clamping for shorter months (e.g. Feb)", () => {
     // 2026-02-15 (Feb 2026 has 28 days), reset on 31st -> clamped to 28th -> 28 - 15 = 13 days
     const now = new Date(2026, 1, 15, 12, 0, 0).getTime();
     expect(getTrafficResetDays(31, now)).toBe(13);
-    expect(formatTrafficResetDays(31, now)).toBe("余 13天重置");
+    expect(formatTrafficResetDays(31, now)).toBe("余13天重置");
   });
 
   it("handles year transition from December to January", () => {
     // 2026-12-25 (Dec has 31 days), reset on 5th -> (31 - 25) + 5 = 11 days
     const now = new Date(2026, 11, 25, 12, 0, 0).getTime();
     expect(getTrafficResetDays(5, now)).toBe(11);
-    expect(formatTrafficResetDays(5, now)).toBe("余 11天重置");
+    expect(formatTrafficResetDays(5, now)).toBe("余11天重置");
   });
 });
 
