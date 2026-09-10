@@ -425,7 +425,7 @@ describe("getPingRecords", () => {
 
     expect(records.map((record) => record.task_id)).toEqual([1, 2, 3, 4]);
     expect(records.map((record) => record.value)).toEqual([23, 25, 30, 40]);
-    expect(tasks.map((task) => task.name)).toEqual(["电信", "联通", "移动", "BD"]);
+    expect(tasks.map((task) => task.name)).toEqual(["电信", "联通", "移动", "BGP"]);
     expect(stats?.find((stat) => stat.taskId === 1)?.avg).toBe(23);
   });
 

@@ -37,7 +37,7 @@ export const DEFAULT_CARRIER_NAMES: CarrierNames = {
   ct: "电信",
   cu: "联通",
   cm: "移动",
-  bd: "BD",
+  bd: "BGP",
   // 后端 2.8.5 Beta4 起多出来的四个自定义槽位，后端自己的默认名就是 Node 1..4。
   node_1: "Node 1",
   node_2: "Node 2",
@@ -279,8 +279,8 @@ export function isServerOnline(server: CfsmServer, now = Date.now()): boolean {
   return lastUpdated > 0 && now - lastUpdated < ONLINE_THRESHOLD_MS;
 }
 
-export function extractServerCarrierNames(server: CfsmServer): CarrierNames | undefined {
-  const overrides: Partial<Record<CarrierKey, unknown>> = {};
+export function extractServerCarrierNames(server: CfsmServer): Partial<CarrierNames> | undefined {
+  const overrides: Partial<CarrierNames> = {};
   let hasOverride = false;
   if (server.custom_ct_name?.trim()) { overrides.ct = server.custom_ct_name.trim(); hasOverride = true; }
   if (server.custom_cu_name?.trim()) { overrides.cu = server.custom_cu_name.trim(); hasOverride = true; }
@@ -290,7 +290,7 @@ export function extractServerCarrierNames(server: CfsmServer): CarrierNames | un
   if (server.node_2_name?.trim()) { overrides.node_2 = server.node_2_name.trim(); hasOverride = true; }
   if (server.node_3_name?.trim()) { overrides.node_3 = server.node_3_name.trim(); hasOverride = true; }
   if (server.node_4_name?.trim()) { overrides.node_4 = server.node_4_name.trim(); hasOverride = true; }
-  return hasOverride ? resolveCarrierNames(overrides) : undefined;
+  return hasOverride ? overrides : undefined;
 }
 
 export function toNodeInfo(server: CfsmServer): NodeInfo {

@@ -279,7 +279,10 @@ function shallowEqualMetrics(a: NodeMetrics, b: NodeMetrics) {
   );
 }
 
-function shallowEqualCarrierNames(a?: CarrierNames, b?: CarrierNames) {
+function shallowEqualCarrierNames(
+  a?: Partial<CarrierNames>,
+  b?: Partial<CarrierNames>,
+) {
   if (a === b) return true;
   if (!a || !b) return false;
   return (

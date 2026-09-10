@@ -374,7 +374,7 @@ export interface NodeInfo {
   ipv6: string;
   created_at: string;
   updated_at: string;
-  carrierNames?: CarrierNames;
+  carrierNames?: Partial<CarrierNames>;
 }
 
 /** 节点实时指标。所有容量字段为字节，速率为字节/秒。 */

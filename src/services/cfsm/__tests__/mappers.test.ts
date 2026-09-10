@@ -324,7 +324,7 @@ describe("history conversion", () => {
       [1, "电信"],
       [2, "联通"],
       [3, "移动"],
-      [4, "BD"],
+      [4, "BGP"],
       [5, "Node 1"],
       [6, "Node 2"],
       [7, "Node 3"],

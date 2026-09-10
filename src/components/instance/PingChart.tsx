@@ -354,9 +354,10 @@ export function PingChart({
   const panelDescription =
     [coverageLabel, samplingLabel].filter(Boolean).join(" · ") || undefined;
 
-  // 纵轴恒定从 0 起：截取中间一段会把 210ms 和 240ms 画成天差地别，看不出真实量级。
+  // 纵轴自适应动态量程：根据当前选中（可见）线路的延迟数据范围自动缩放纵轴，放大波动细节。
   const yRange = useMemo<[number | null, number | null]>(() => {
     if (!chart) return [null, null];
+    let min = Number.POSITIVE_INFINITY;
     let max = Number.NEGATIVE_INFINITY;
     for (let index = 0; index < tasks.length; index += 1) {
       if (!visibleTaskIds.has(tasks[index].id)) continue;
@@ -364,12 +365,36 @@ export function PingChart({
       if (!series) continue;
       for (const value of series) {
         if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+          if (value < min) min = value;
           if (value > max) max = value;
         }
       }
     }
     if (max === Number.NEGATIVE_INFINITY || max <= 0) return [0, 100];
-    return [0, max + Math.max(5, max * 0.12)];
+    if (min === Number.POSITIVE_INFINITY) min = 0;
+
+    const delta = max - min;
+    // 最小保护跨度：避免一条几乎完全无波动的线（如 125ms~126ms）被过度放大
+    const span = Math.max(15, delta);
+    // 上下留白缓冲（约占跨度的 15%），且至少留 3ms
+    const padding = Math.max(3, span * 0.15);
+
+    // 下限：如果 min 已经较低（<= 25ms），或减去 padding 后接近 0，则下限对齐到 0
+    let yMin = min - padding;
+    if (min <= 25 || yMin <= 0) {
+      yMin = 0;
+    } else {
+      // 规整到 5 的倍数，让刻度整齐
+      yMin = Math.max(0, Math.floor(yMin / 5) * 5);
+    }
+
+    // 上限：规整到 5 的倍数
+    let yMax = max + Math.max(5, padding);
+    yMax = Math.ceil(yMax / 5) * 5;
+
+    if (yMax <= yMin) yMax = yMin + 20;
+
+    return [yMin, yMax];
   }, [chart, tasks, visibleTaskIds]);
 
   const baseOptions = useMemo<Omit<uPlot.Options, "width" | "height"> | null>(() => {
@@ -671,7 +696,7 @@ export function PingChart({
         {chart && options && visibleTasks.length > 0 ? (
           <>
             <UplotReact
-              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${connectNulls ? "span" : "gap"}`}
+              key={`${uuid}-${hours}-${cutPeak ? "smooth" : "raw"}-${connectNulls ? "span" : "gap"}-${yRange[0]}-${yRange[1]}-${Array.from(hiddenTasks).sort().join(",")}`}
               options={options}
               data={chart}
             />
