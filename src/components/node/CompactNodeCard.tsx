@@ -103,17 +103,19 @@ function CompactGauge({
 function CompactInfoTile({
   label,
   color,
+  className,
   children,
 }: {
   label: string;
   color: string;
+  className?: string;
   children: ReactNode;
 }) {
   const style = { "--compact-info-color": color } as CSSProperties;
 
   return (
     <div
-      className="compact-node-info-tile"
+      className={clsx("compact-node-info-tile", className)}
       style={style}
       aria-label={label}
     >
@@ -519,6 +521,7 @@ function CompactNodeInfoStrip({
         <CompactInfoTile
           label="累计流量"
           color="var(--text-primary)"
+          className="is-traffic-total"
         >
           <CompactInfoRow
             icon={(
@@ -556,7 +559,7 @@ function CompactNodeInfoStrip({
             icon={<CircleDollarSign size={12} strokeWidth={2.2} />}
             // 后端 price 为空/0/-1 都表示免费，小卡片直接写「免费」而不是留白。
             value={renewalPrice || "免费"}
-            color={renewalPrice ? "var(--status-success)" : "var(--text-tertiary)"}
+            color={renewalPrice ? "var(--text-secondary)" : "var(--text-tertiary)"}
           />
         </CompactInfoTile>
       )}

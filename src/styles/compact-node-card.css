@@ -473,6 +473,28 @@
   font-size: calc(10px - var(--ci-shrink) * 0.5px);
 }
 
+.compact-node-info-tile.is-traffic-total .compact-node-info-content {
+  align-self: center;
+  width: fit-content;
+  max-width: 100%;
+  gap: calc(6.5px - var(--ci-shrink) * 0.4px);
+}
+
+.compact-node-info-tile.is-traffic-total .compact-node-info-row {
+  justify-content: flex-start;
+  gap: 4px;
+}
+
+.compact-node-info-tile.is-traffic-total .compact-node-info-row-label {
+  display: inline-flex;
+  align-items: center;
+}
+
+.compact-node-info-tile.is-traffic-total .compact-node-info-row-value {
+  flex: 0 0 auto;
+}
+
+
 .compact-node-traffic-pulse {
   display: grid;
   grid-template-columns: repeat(16, minmax(0, 1fr));
