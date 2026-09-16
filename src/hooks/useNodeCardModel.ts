@@ -4,6 +4,7 @@ import { useHourlyClock, useMinuteClock } from "@/hooks/useClock";
 import { useNodeCardSnapshots, useShowThreeNetDetails } from "@/hooks/useNode";
 import {
   buildPingBuckets,
+  useNodeMultiPingTaskIds,
   useNodePingOverview,
   useNodePingOverviewLines,
   usePingBuckets,
@@ -82,7 +83,7 @@ export function useNodeCardModel(
     includeMultiPing &&
     showThreeNetDetails &&
     enableHomepageMultiPing &&
-    // 条数不再写死三条：选 1~4 条都算开着，选 0 条才回退单线路。
+    // 条数不再写死三条：选 1~8 条都算开着，选 0 条才回退单线路。
     isHomepageMultiPingConfigured(homepageMultiPingTaskIds);
   const windowPing = useNodePingOverview(uuid, !multiPingActive);
   const windowPingLines = useNodePingOverviewLines(
@@ -148,13 +149,16 @@ export function useNodeCardModel(
   );
   // 与 usePingBuckets 同理:窗口按分钟前移,不依赖数据刷新才滑动。
   const bucketNow = useMinuteClock(multiPingActive);
+  // 行序按这台节点实际显示的线路排：站点设置打底、访客在卡片上换过的行盖上去（PingLineSwitcher），
+  // 和 useNodePingOverviewLines 取数用的是同一份。
+  const nodeMultiPingTaskIds = useNodeMultiPingTaskIds(uuid);
   const homepagePingLines = useMemo<HomepagePingDisplayLine[]>(() => {
     if (
       !multiPingActive
     ) {
       return [];
     }
-    return homepageMultiPingTaskIds.map((taskId) => {
+    return nodeMultiPingTaskIds.map((taskId) => {
       const loaded = realPingLines.find((line) => line.taskId === taskId);
       const line: HomepagePingLine =
         loaded ?? {
@@ -183,9 +187,9 @@ export function useNodeCardModel(
   }, [
     bucketNow,
     nodeCarrierNames,
-    homepageMultiPingTaskIds,
     latencyWindowMs,
     multiPingActive,
+    nodeMultiPingTaskIds,
     offlineSince,
     pingBucketCount,
     realPingLines,

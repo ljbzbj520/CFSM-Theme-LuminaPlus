@@ -6,7 +6,7 @@ import type {
   SysConfig,
   TrafficTrendSample,
 } from "@/types/cfsm";
-import { getServersSnapshot } from "@/services/api";
+import { getServersSnapshot, type ServersSnapshot } from "@/services/api";
 import {
   emptyNodeMetrics,
   isServerOnline,
@@ -42,6 +42,11 @@ export interface StoreStatusSnapshot {
   realtimeConnected: boolean;
   /** 多站部署下有后端未返回数据。 */
   partial: boolean;
+  /**
+   * 实时连接到了站长设的时限（`frontend_ws_timeout_minutes`）：已断开、轮询也停了，等用户选择
+   * 是否继续。页面停在断开前的数据；这不是故障，别当「同步异常」提示。
+   */
+  realtimeSessionExpired: boolean;
 }
 
 export interface HomeNodeSummary {
@@ -81,6 +86,8 @@ interface NodeTrafficTrend {
 
 /** WebSocket 断开时的轮询节奏。 */
 const POLL_REFRESH_INTERVAL_MS = 5_000;
+/** 新建的 WebSocket 给一个轮询周期握手，期间不算「连不上」，见 {@link realtimeKnownUnavailable}。 */
+const WS_CONNECT_GRACE_MS = POLL_REFRESH_INTERVAL_MS;
 /**
  * WebSocket 正常时仍定期全量对齐，用于捕获元数据变更与节点增删。
  *
@@ -90,6 +97,28 @@ const POLL_REFRESH_INTERVAL_MS = 5_000;
 const FULL_REFRESH_INTERVAL_MS = 60_000;
 /** 离线是"超过阈值没有上报"，没有事件驱动，只能定时重算。 */
 const ONLINE_RECHECK_INTERVAL_MS = 15_000;
+
+/**
+ * 页面进了后台多久之后断开实时连接、暂停轮询。
+ *
+ * 后端只要还有一个前端 WebSocket 连着，就让**所有**探针按 `wss_report_interval`（通常 2 秒）上报，
+ * 一个都没有时才退回 60 秒以上（MetricsBroadcaster `_getAgentNextWssReportAfterMs`）—— 一个忘在后台的
+ * 标签页就能让全站探针一直高频上报，吃的是站长的 Workers / DO 额度。后端文档也要求页面隐藏时主动断开。
+ * 不一隐藏就断：来回切标签页每次都要重连、再补一次 `/api/servers`，给个缓冲。
+ */
+export const HIDDEN_REALTIME_PAUSE_DELAY_MS = 30_000;
+/** 后台「前端实时连接超时」的上限（分钟），与后端 normalizeFrontendWsTimeoutMinutes 同口径。 */
+const MAX_REALTIME_SESSION_MINUTES = 1440;
+
+/**
+ * `/api/config` 的 `frontend_ws_timeout_minutes` → 单次实时连接的时长上限（毫秒）。
+ * 0 / 负数 / 非整数一律当「不限」（后端默认 0）；超过上限按上限算。
+ */
+export function resolveRealtimeSessionLimitMs(minutes: unknown): number {
+  const value = typeof minutes === "number" ? minutes : Number(minutes);
+  if (!Number.isInteger(value) || value <= 0) return 0;
+  return Math.min(value, MAX_REALTIME_SESSION_MINUTES) * 60_000;
+}
 /** 快照的瞬时速率超过这个年龄就不再当"现在"用，详见 {@link shouldTrustSnapshotRate}。 */
 const SNAPSHOT_RATE_MAX_AGE_MS = 10_000;
 const SERVERS_REQUEST_TIMEOUT_MS = 8_000;
@@ -422,7 +451,6 @@ function updateTrafficTrendSeries(
 }
 
 let state: State = emptyState();
-const visibleNodeListeners = new Set<Listener>();
 const allNodesListeners = new Set<Listener>();
 const homeNodeSummaryListeners = new Set<Listener>();
 const nodeOnlineSummaryListeners = new Set<Listener>();
@@ -432,10 +460,6 @@ const nodeMetaListeners = new Map<string, Set<Listener>>();
 const nodeMetricsListeners = new Map<string, Set<Listener>>();
 const trafficTrendListeners = new Map<string, Set<Listener>>();
 let storeVersion = 0;
-let visibleNodeUuidsSnapshot: string[] = [];
-let visibleNodeUuidsSnapshotVersion = -1;
-let visibleNodeUuidsWithHiddenSnapshot: string[] = [];
-let visibleNodeUuidsWithHiddenSnapshotVersion = -1;
 let allNodeMetaSnapshot: NodeInfo[] = [];
 let allNodeMetaSnapshotVersion = -1;
 let homeNodeSummariesSnapshot: HomeNodeSummary[] = [];
@@ -450,6 +474,7 @@ let storeStatusSnapshot: StoreStatusSnapshot = {
   nodeInfoError: false,
   realtimeConnected: false,
   partial: false,
+  realtimeSessionExpired: false,
 };
 let scrollIdleTimer: number | null = null;
 let scrollTrackingStarted = false;
@@ -504,7 +529,6 @@ function commit(next: State, touches: CommitTouches = {}) {
     hasAny(touches.meta) ||
     hasAny(touches.metrics);
 
-  if (touches.nodeList) emitListeners(visibleNodeListeners);
   if (touches.allNodes) emitListeners(allNodesListeners);
   if (homeTouched) emitListeners(homeNodeSummaryListeners);
   if (onlineTouched) {
@@ -623,13 +647,45 @@ function sortServers(servers: CfsmServer[]) {
 }
 
 /**
- * WS 是否**已经确定**不可用：建过连接但一条都没连上。
+ * WS 是否**已经确定**不可用：建过连接、过了握手宽限期，还是一条都没连上。
  *
  * 首屏（还没建连，`connectionsByBase` 是空的）返回 false —— 那时该等 WS，不是拿快照的
  * 陈旧速率顶上；只有真的连不上、靠 5 秒轮询兜底时，快照才是唯一的数据源。
+ * 刚建、还在握手的连接同理：切回前台时连接和快照是同时发出去的，快照先回来很常见
+ * （2026-09-13 线上实测快照 1.0 秒、WS 握手 1.4 秒），这时认快照速率，顶部带宽会被旧值顶一下。
  */
 function realtimeKnownUnavailable(): boolean {
-  return connectionsByBase.size > 0 && connectedBases.size === 0;
+  return (
+    connectionsByBase.size > 0 &&
+    connectedBases.size === 0 &&
+    Date.now() - connectionsCreatedAt >= WS_CONNECT_GRACE_MS
+  );
+}
+
+/**
+ * 多站部署下这次没返回的后端（超时、报错），它名下的节点沿用上一份数据，不当成被删掉。
+ *
+ * 快照里没有这些节点，直接照单全收的话，一次 8 秒超时就会：节点从首页消失、那个站的 WS 被关掉、
+ * 这些节点攒的延迟缓冲区被 `retainPingNodes` 清空 —— 下一次同步成功时节点回来了，缓冲区回不来。
+ * 沿用的只是上一份原始数据，在线状态照旧由 `refreshOnlineFlags` 按最后上报时间重算；那个站真把节点
+ * 删了，等它恢复响应后的第一次同步再去掉。
+ */
+function withUnreachableSiteServers(
+  snapshot: ServersSnapshot,
+): Pick<ServersSnapshot, "servers" | "baseByServerId"> {
+  if (snapshot.failedBases.length === 0) return snapshot;
+  const failedBases = new Set(snapshot.failedBases);
+  const servers = [...snapshot.servers];
+  const baseByServerId = new Map(snapshot.baseByServerId);
+  for (const uuid of state.order) {
+    if (baseByServerId.has(uuid)) continue;
+    const base = latestBaseByServerId.get(uuid);
+    const raw = state.rawByUuid[uuid];
+    if (base == null || raw == null || !failedBases.has(base)) continue;
+    servers.push(raw);
+    baseByServerId.set(uuid, base);
+  }
+  return { servers, baseByServerId };
 }
 
 function syncServers() {
@@ -655,7 +711,8 @@ async function performServersSync() {
     if (controller.signal.aborted) return;
 
     const now = Date.now();
-    const servers = sortServers(snapshot.servers);
+    const { servers: snapshotServers, baseByServerId } = withUnreachableSiteServers(snapshot);
+    const servers = sortServers(snapshotServers);
     const order = servers.map((server) => server.id);
     const touchedMeta = new Set<string>();
     const touchedMetrics = new Set<string>();
@@ -775,7 +832,7 @@ async function performServersSync() {
     hydrated = true;
     nodeInfoError = false;
     partialSites = snapshot.partial;
-    updateWsSubscriptions(snapshot.baseByServerId);
+    updateWsSubscriptions(baseByServerId);
 
     if (
       orderChanged ||
@@ -1079,6 +1136,27 @@ function updateSysConfigSnapshot(next: SysConfig): boolean {
 
 const connectionsByBase = new Map<string, WsConnection>();
 const connectedBases = new Set<string>();
+/** 这一轮连接从何时开始建（从一条都没有到建起第一条），握手宽限期从这里算。 */
+let connectionsCreatedAt = 0;
+
+/** 最近一次快照给出的「节点 → 所属后端」：切换详情页焦点时照它重排订阅，不必等下一次同步。 */
+let latestBaseByServerId = new Map<string, string>();
+/** 详情页正在看的节点：设了就只订阅这一台（后端文档：详情页不要订阅全量再在前端过滤）。 */
+let realtimeFocusUuid: string | null = null;
+/** 页面在后台超过缓冲期：实时连接已断开、轮询已暂停（见 HIDDEN_REALTIME_PAUSE_DELAY_MS）。 */
+let hiddenPaused = false;
+let hiddenPauseTimer: number | null = null;
+/** 站长设的单次实时连接时长上限（毫秒，0 = 不限），由 RealtimeSessionPrompt 从 `/api/config` 带进来。 */
+let sessionLimitMs = 0;
+/** 本次实时连接从何时开始计时；没有连接时为 0。 */
+let sessionStartedAt = 0;
+let sessionTimer: number | null = null;
+/** 连接到了时限：已断开，等用户点「继续」。期间不重连、不轮询，切回前台也不会静默重连。 */
+let sessionExpired = false;
+
+function realtimePaused(): boolean {
+  return hiddenPaused || sessionExpired;
+}
 
 function setRealtimeConnected(next: boolean) {
   if (realtimeConnected === next) return;
@@ -1087,8 +1165,14 @@ function setRealtimeConnected(next: boolean) {
 }
 
 function updateWsSubscriptions(baseByServerId: Map<string, string>) {
+  latestBaseByServerId = baseByServerId;
+  // 后台暂停 / 连接到时限期间不建连接：快照照常合并，实时连接等恢复时由 resumeRealtime 重建。
+  if (realtimePaused()) return;
   const idsByBase = new Map<string, string[]>();
   for (const [serverId, base] of baseByServerId) {
+    // 详情页只订阅正在看的这一台，推送量从全站降到一台。在同一条连接上改 ids、不重连，
+    // 「单次连接」的计时也就不会因为进出详情页被重置。
+    if (realtimeFocusUuid != null && serverId !== realtimeFocusUuid) continue;
     const ids = idsByBase.get(base) ?? [];
     ids.push(serverId);
     idsByBase.set(base, ids);
@@ -1101,6 +1185,7 @@ function updateWsSubscriptions(baseByServerId: Map<string, string>) {
       existing.updateIds(ids);
       continue;
     }
+    if (connectionsByBase.size === 0) connectionsCreatedAt = Date.now();
     connectionsByBase.set(
       base,
       createWsConnection(base, ids, {
@@ -1120,6 +1205,9 @@ function updateWsSubscriptions(baseByServerId: Map<string, string>) {
     connectionsByBase.delete(base);
     connectedBases.delete(base);
   }
+  // 「单次连接」从建起第一条连接算起；一条都没有了就停表，下次建连重新计时。
+  if (connectionsByBase.size > 0) startRealtimeSessionClock();
+  else clearRealtimeSessionClock();
   setRealtimeConnected(connectedBases.size > 0);
 }
 
@@ -1128,6 +1216,124 @@ function closeAllConnections() {
   connectionsByBase.clear();
   connectedBases.clear();
   realtimeConnected = false;
+  clearRealtimeSessionClock();
+}
+
+/* ---- 实时连接的暂停与恢复（页面进后台 / 连接到时限） ---- */
+
+// 只在开始计时那一下排定时器：每 60 秒一次的全量同步也会走到这里，每次都重排纯属白忙
+// （剩余时长是按开始时刻算的，重排不改变到点时刻）。时限本身变了由 setRealtimeSessionLimitMinutes 重排。
+function startRealtimeSessionClock() {
+  if (sessionStartedAt !== 0) return;
+  sessionStartedAt = Date.now();
+  scheduleRealtimeSessionTimer();
+}
+
+function scheduleRealtimeSessionTimer() {
+  if (sessionTimer != null) {
+    window.clearTimeout(sessionTimer);
+    sessionTimer = null;
+  }
+  if (sessionLimitMs <= 0 || sessionStartedAt === 0) return;
+  const remaining = Math.max(0, sessionStartedAt + sessionLimitMs - Date.now());
+  sessionTimer = window.setTimeout(expireRealtimeSession, remaining);
+}
+
+function clearRealtimeSessionClock() {
+  if (sessionTimer != null) window.clearTimeout(sessionTimer);
+  sessionTimer = null;
+  sessionStartedAt = 0;
+}
+
+/** 断开实时连接、清掉待回放的帧，页面上的数据原样保留（后端文档：关闭后保留最后一次数据静态展示）。 */
+function suspendRealtime() {
+  closeAllConnections();
+  resetWsCoalesceState();
+  commit(state, { storeStatus: true });
+}
+
+/**
+ * 恢复实时：**立刻按暂停前那份节点表把连接建回去，同时补一次 `/api/servers`**。
+ *
+ * 暂停期间没有前端连着，后端让全站探针退回 60 秒一报，要等前端的订阅到了才通知探针提速（新版探针收到就补报）。
+ * 早先照后端文档「先补 REST 再连 WS」串行做，连接得等快照回来才建，而 `/api/servers` 冷的时候很慢 ——
+ * 2026-09-13 线上实测：先快照后连接，切回后 6.4 秒才有数据；连接先走 1.7 秒。快照还测到过 8.3 秒，
+ * 超过 SERVERS_REQUEST_TIMEOUT_MS 整次作废，连接要等下一次轮询成功才建。内置主题也是切回来直接重连。
+ * 快照回来时 updateWsSubscriptions 在同一条连接上改 ids（节点增删），不重连；快照比实时值旧时
+ * performServersSync 只取 WS 不下发的字段。补不上时 5 秒轮询会接着试。
+ * **只拉 `/api/servers`，绝不碰 `/api/history/all`** —— 首页硬约束：历史只能由人点刷新触发。
+ */
+function resumeRealtime() {
+  if (!started || realtimePaused()) return;
+  if (latestBaseByServerId.size > 0) updateWsSubscriptions(latestBaseByServerId);
+  lastFullRefreshAt = Date.now();
+  void syncServers().catch(() => {});
+}
+
+function pauseRealtimeForHidden() {
+  hiddenPauseTimer = null;
+  if (!started || hiddenPaused || !document.hidden) return;
+  hiddenPaused = true;
+  suspendRealtime();
+}
+
+function handleVisibilityChange() {
+  if (document.hidden) {
+    if (!hiddenPaused && hiddenPauseTimer == null) {
+      hiddenPauseTimer = window.setTimeout(pauseRealtimeForHidden, HIDDEN_REALTIME_PAUSE_DELAY_MS);
+    }
+    return;
+  }
+  if (hiddenPauseTimer != null) {
+    window.clearTimeout(hiddenPauseTimer);
+    hiddenPauseTimer = null;
+  }
+  if (!hiddenPaused) return;
+  hiddenPaused = false;
+  // 因为连接到时限而暂停的，仍等用户点「继续」—— resumeRealtime 里的 realtimePaused() 会挡住。
+  resumeRealtime();
+}
+
+function expireRealtimeSession() {
+  sessionTimer = null;
+  if (sessionLimitMs <= 0 || sessionExpired || connectionsByBase.size === 0) return;
+  sessionExpired = true;
+  suspendRealtime();
+}
+
+/**
+ * 站长设的单次实时连接时长（`/api/config` 的 `frontend_ws_timeout_minutes`）。后端只下发不执行，
+ * 到点断开、问用户要不要继续都得前端自己做；不接的话站长的这个设置对本主题等于没有。
+ */
+export function setRealtimeSessionLimitMinutes(minutes: unknown): void {
+  const next = resolveRealtimeSessionLimitMs(minutes);
+  if (next === sessionLimitMs) return;
+  sessionLimitMs = next;
+  scheduleRealtimeSessionTimer();
+}
+
+/** 用户在「实时连接已达到时限」提示里点了继续：解除暂停，重新计时并重连。 */
+export function resumeRealtimeSession(): void {
+  if (!sessionExpired) return;
+  sessionExpired = false;
+  commit(state, { storeStatus: true });
+  resumeRealtime();
+}
+
+/**
+ * 详情页进来时调用：实时订阅收窄到这一台，返回的函数在离开时恢复订阅全站。
+ * 已有快照就立刻重排；还没同步过的话，第一次同步会按焦点建订阅。别的节点的在线状态靠
+ * 60 秒一次的全量同步维持，不会因为收窄订阅而误判离线。
+ */
+export function focusRealtimeNode(uuid: string): () => void {
+  if (!uuid) return () => undefined;
+  realtimeFocusUuid = uuid;
+  if (started) updateWsSubscriptions(latestBaseByServerId);
+  return () => {
+    if (realtimeFocusUuid !== uuid) return;
+    realtimeFocusUuid = null;
+    if (started) updateWsSubscriptions(latestBaseByServerId);
+  };
 }
 
 /* ------------------------------------------------------------------ *
@@ -1138,8 +1344,21 @@ function closeAllConnections() {
 const BOOTSTRAP_MAX_BACKOFF_TICKS = 15;
 let bootstrapBackoffTicks = 0;
 let bootstrapSkipTicks = 0;
+let bootstrapPromise: Promise<void> | null = null;
 
-async function bootstrap() {
+/**
+ * 同一时刻只跑一个首屏同步。冷的 `/api/servers` 能拖到 8 秒超时，比 5 秒一拍的轮询还长：途中那一拍
+ * 再调一次会接上同一个在途请求（`syncServers` 共用 promise），失败时两边的 catch 各退避一次，
+ * 一次失败被当成两次、退避直接翻倍（首屏超时后第一次重试从第 15 秒拖到第 20 秒）。
+ */
+function bootstrap(): Promise<void> {
+  bootstrapPromise ??= runBootstrap().finally(() => {
+    bootstrapPromise = null;
+  });
+  return bootstrapPromise;
+}
+
+async function runBootstrap() {
   try {
     await syncServers();
     bootstrapBackoffTicks = 0;
@@ -1166,9 +1385,14 @@ function ensureStarted() {
   started = true;
 
   ensureScrollTrackingStarted();
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  // 在后台标签页里打开（比如中键新开）时不会触发 visibilitychange，照样开始计缓冲期。
+  if (document.hidden) handleVisibilityChange();
   void bootstrap();
 
   pollTimer = window.setInterval(() => {
+    // 后台暂停 / 连接到时限期间一律不打后端：`/api/servers` 本身也会让后端把前端标成「正在看」。
+    if (realtimePaused()) return;
     if (!hydrated) {
       if (bootstrapSkipTicks > 0) {
         bootstrapSkipTicks -= 1;
@@ -1183,7 +1407,7 @@ function ensureStarted() {
   }, POLL_REFRESH_INTERVAL_MS);
 
   fullRefreshTimer = window.setInterval(() => {
-    if (!hydrated) return;
+    if (!hydrated || realtimePaused()) return;
     const now = Date.now();
     if (now - lastFullRefreshAt < FULL_REFRESH_INTERVAL_MS) return;
     lastFullRefreshAt = now;
@@ -1223,6 +1447,12 @@ function stopStore() {
   syncController = null;
   closeAllConnections();
   resetWsCoalesceState();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+  if (hiddenPauseTimer != null) window.clearTimeout(hiddenPauseTimer);
+  hiddenPauseTimer = null;
+  hiddenPaused = false;
+  sessionExpired = false;
+  latestBaseByServerId = new Map();
   for (const timer of [pollTimer, fullRefreshTimer, onlineTimer]) {
     if (timer != null) window.clearInterval(timer);
   }
@@ -1253,10 +1483,6 @@ function subscribeSet(listeners: Set<Listener>, listener: Listener): () => void 
   return () => {
     listeners.delete(listener);
   };
-}
-
-export function subscribeVisibleNodeUuids(listener: Listener): () => void {
-  return subscribeSet(visibleNodeListeners, listener);
 }
 
 export function subscribeAllNodes(listener: Listener): () => void {
@@ -1317,7 +1543,8 @@ export function getStoreStatusSnapshot(): StoreStatusSnapshot {
     storeStatusSnapshot.hydrated === hydrated &&
     storeStatusSnapshot.nodeInfoError === nodeInfoError &&
     storeStatusSnapshot.realtimeConnected === realtimeConnected &&
-    storeStatusSnapshot.partial === partialSites
+    storeStatusSnapshot.partial === partialSites &&
+    storeStatusSnapshot.realtimeSessionExpired === sessionExpired
   ) {
     return storeStatusSnapshot;
   }
@@ -1327,6 +1554,7 @@ export function getStoreStatusSnapshot(): StoreStatusSnapshot {
     nodeInfoError,
     realtimeConnected,
     partial: partialSites,
+    realtimeSessionExpired: sessionExpired,
   };
   return storeStatusSnapshot;
 }
@@ -1354,38 +1582,6 @@ export function getNodeTrafficTrendSnapshot(uuid: string): {
 } {
   const trend = state.trafficTrends[uuid] ?? EMPTY_TRAFFIC_TREND;
   return trend.snapshot;
-}
-
-export function getVisibleNodeUuidsSnapshot(includeHidden = false): string[] {
-  if (includeHidden) {
-    if (visibleNodeUuidsWithHiddenSnapshotVersion === storeVersion) {
-      return visibleNodeUuidsWithHiddenSnapshot;
-    }
-  } else if (visibleNodeUuidsSnapshotVersion === storeVersion) {
-    return visibleNodeUuidsSnapshot;
-  }
-
-  const next = state.order.filter((uuid) => {
-    const node = state.metaByUuid[uuid];
-    return Boolean(node) && (includeHidden || !node.hidden);
-  });
-
-  const previous = includeHidden
-    ? visibleNodeUuidsWithHiddenSnapshot
-    : visibleNodeUuidsSnapshot;
-  const value =
-    next.length === previous.length && next.every((uuid, index) => uuid === previous[index])
-      ? previous
-      : next;
-
-  if (includeHidden) {
-    visibleNodeUuidsWithHiddenSnapshot = value;
-    visibleNodeUuidsWithHiddenSnapshotVersion = storeVersion;
-  } else {
-    visibleNodeUuidsSnapshot = value;
-    visibleNodeUuidsSnapshotVersion = storeVersion;
-  }
-  return value;
 }
 
 export function getAllNodeMetaSnapshot(): NodeInfo[] {

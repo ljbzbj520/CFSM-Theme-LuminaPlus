@@ -27,8 +27,8 @@ const GIB = 1024 * 1024 * 1024;
 export const ONLINE_THRESHOLD_MS = 300_000;
 
 /**
- * 四条线路的默认显示名。站长可以在后端改名（`/api/config` 的 `custom_ct_name` 等，
- * 后端后加的字段），老后端不下发时就用这里的默认值 —— 所以四条线路的 id / key 是固定的，
+ * 各条线路的默认显示名。站长可以在后端改名（`/api/config` 的 `custom_ct_name`、`node_1_name` 等，
+ * 后端后加的字段），老后端不下发时就用这里的默认值 —— 所以线路的 id / key 是固定的，
  * 只有名字可变。
  */
 export type { CarrierNames };
@@ -72,9 +72,8 @@ export function resolveCarrierNames(
  * 后端固定的探测线路表，没有可配置的 ping 任务。id 就是线路序号（1..N），与 `CARRIER_KEYS`
  * 同序 —— 设置页存的 `homepageMultiPingTaskIds` / `homepageDefaultPingTaskId` 都是这个 id。
  *
- * `field` / `lossField` 是 `/api/servers` 与历史行里的列名。**注意历史接口目前只有前四条**
- * （2026-09-07 实测 `/api/history/all` 的行里没有 `ping_node_*`），所以 node_1..4 在详情页
- * Ping 图表上没有数据点 —— `getPingRecords` 按实际观测到的线路过滤，不会画空线。
+ * `field` / `lossField` 是 `/api/servers` 与历史行里的列名。历史接口 2026-09-09 起八条都有
+ * （之前只有前四条）；没配探测目标的线路读出来是空的，`getPingRecords` 按实际观测到的线路过滤，不会画空线。
  */
 export const CARRIER_TASKS = [
   { id: 1, key: "ct", name: DEFAULT_CARRIER_NAMES.ct, field: "ping_ct", lossField: "loss_ct" },
@@ -128,6 +127,26 @@ function toNullableNumber(value: unknown): number | null {
   if (value == null || value === "") return null;
   const parsed = toNumber(value, Number.NaN);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * 一整轮探测全部超时时记下的延迟值。沿用主题一直以来「负值 = 这次探测失败」的约定：
+ * `resolvePingSampleCounts`、首页柱子与详情页图表都按它算丢包、画断点，不另起一套。
+ */
+export const PING_TIMEOUT_VALUE = -1;
+
+/**
+ * 一条线路一轮探测的延迟。
+ *
+ * 后端 2026-09-07 起的口径（theme-develop.md 末尾）：`false` / 字段缺失 = 没配置、没上报或没取样，
+ * 不显示；`ping: null` 加上有数值的丢包（全超时时是 100）= 这一轮全部超时。两者经 toNullableNumber
+ * 都读成 null 的话，超时就被当成「没数据」：首页那格留空而不是涂红、卡片丢包率偏低、详情页丢包带
+ * 看不到（官方前端 2026-09-08 的 fba07dc 修的是同一类问题）。所以延迟读不出数时要看同一轮的丢包。
+ */
+function probeLatency(ping: unknown, loss: number | null): number | null {
+  const value = toNullableNumber(ping);
+  if (value != null) return value;
+  return loss != null && loss > 0 ? PING_TIMEOUT_VALUE : null;
 }
 
 /**
@@ -337,8 +356,9 @@ export function toNodeInfo(server: CfsmServer): NodeInfo {
 function carrierPingFrom(row: Record<string, unknown>): CarrierPingSnapshot {
   const ping = { ...EMPTY_CARRIER_PING };
   for (const task of CARRIER_TASKS) {
-    ping[task.key] = toNullableNumber(row[task.field]);
-    ping[CARRIER_LOSS_KEYS[task.key]] = toNullableNumber(row[task.lossField]);
+    const loss = toNullableNumber(row[task.lossField]);
+    ping[task.key] = probeLatency(row[task.field], loss);
+    ping[CARRIER_LOSS_KEYS[task.key]] = loss;
   }
   return ping;
 }
@@ -372,8 +392,10 @@ export function parseLatencyWindow(server: CfsmServer): PingLiveSample[] {
     const ping = { ...EMPTY_CARRIER_PING };
     for (const key of CARRIER_KEYS) {
       // 窗口点里的键和 CARRIER_KEYS 同名（ct/cu/cm/bd/node_1..4）；老后端没有的读成 null。
-      ping[key] = toNullableNumber(point[key]);
-      ping[CARRIER_LOSS_KEYS[key]] = loss ? toNullableNumber(loss[key]) : null;
+      const lossValue = loss ? toNullableNumber(loss[key]) : null;
+      // 超时那一格 ping 是 null、loss 是 100：要读成超时，见 probeLatency。
+      ping[key] = probeLatency(point[key], lossValue);
+      ping[CARRIER_LOSS_KEYS[key]] = lossValue;
     }
     out.push({ time, ping });
   }
@@ -513,16 +535,11 @@ const NUMERIC_PATCH_FIELDS = new Set([
   "report_interval",
 ]);
 
-const NULLABLE_NUMERIC_PATCH_FIELDS = new Set([
-  "ping_ct",
-  "ping_cu",
-  "ping_cm",
-  "ping_bd",
-  "loss_ct",
-  "loss_cu",
-  "loss_cm",
-  "loss_bd",
-]);
+// 从线路表推导：手写时只列了前四条，后四条（ping_node_* / loss_node_*）的 `false` 会原样进合并结果，
+// 和上一份解析好的 null 一比永远「不相等」，每帧都白生成一个新对象。
+const NULLABLE_NUMERIC_PATCH_FIELDS = new Set<string>(
+  CARRIER_TASKS.flatMap((task) => [task.field, task.lossField]),
+);
 
 /**
  * 把一条增量样本合并进已知的服务器状态。
@@ -603,22 +620,26 @@ export function historyRowToLoadRecord(row: HistoryRow, client: string): LoadRec
   };
 }
 
-/** 历史行 → 四条线路的 ping 记录；缺测的线路不产出点。 */
+/**
+ * 历史行 → 各线路的 ping 记录。没配置 / 没取样的线路不产出点；**整轮超时要产出**
+ * （值是 PING_TIMEOUT_VALUE）—— 图表靠它画断点、丢包带靠它涂红，跳过的话超时在详情页上就消失了。
+ */
 export function historyRowsToPingRecords(rows: HistoryRow[], client: string): PingRecord[] {
   const out: PingRecord[] = [];
   for (const row of rows) {
     const time = normalizeTimestamp(row.timestamp);
     if (time <= 0) continue;
     for (const task of CARRIER_TASKS) {
-      const value = toNullableNumber(row[task.field]);
-      if (value == null || value < 0) continue;
+      const loss = toNullableNumber(row[task.lossField]);
+      const value = probeLatency(row[task.field], loss);
+      if (value == null) continue;
       out.push({
         task_id: task.id,
         time,
         value,
         client,
         count: 1,
-        loss: toNullableNumber(row[task.lossField]),
+        loss,
       });
     }
   }
@@ -637,7 +658,7 @@ export function historyRowsToPingSamples(rows: HistoryRow[]): PingLiveSample[] {
   for (const row of rows) {
     const time = normalizeTimestamp(row.timestamp);
     if (time <= 0) continue;
-    // 历史行目前只有前四条线路的列，node_1..4 读出来是 null（实测，见 CARRIER_TASKS 注释）。
+    // 没配探测目标的线路读出来是 null（后端下发 false，见 CARRIER_TASKS 注释）。
     const ping = carrierPingFrom(row as unknown as Record<string, unknown>);
     out.push({ time, ping });
   }

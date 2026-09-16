@@ -24,6 +24,11 @@ import {
   normalizeHomepagePingTaskBindings,
   type HomepagePingTaskBindings,
 } from "@/utils/pingTasks";
+import {
+  EMPTY_PING_LINE_OVERRIDES_BY_NODE,
+  normalizePingLineOverridesByNode,
+  type PingLineOverridesByNode,
+} from "@/utils/pingLineOverrides";
 
 export type Appearance = "system" | "light" | "dark";
 export type NodeViewMode = "large" | "compact" | "mini" | "list";
@@ -38,6 +43,7 @@ export interface ResolvedThemeSettings {
   homepageDefaultPingTaskId: number;
   enableHomepageMultiPing: boolean;
   homepageMultiPingTaskIds: number[];
+  homepagePingLineOverrides: PingLineOverridesByNode;
   fakePingForUnbound: boolean;
   showHomeOverview: boolean;
   showGroupTabs: boolean;
@@ -79,6 +85,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   homepageDefaultPingTaskId: DEFAULT_HOMEPAGE_PING_TASK_ID,
   enableHomepageMultiPing: true,
   homepageMultiPingTaskIds: [...DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS],
+  homepagePingLineOverrides: EMPTY_PING_LINE_OVERRIDES_BY_NODE,
   fakePingForUnbound: false,
   showHomeOverview: true,
   showGroupTabs: true,
@@ -112,6 +119,27 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
 
 export function isAppearance(value: unknown): value is Appearance {
   return value === "system" || value === "light" || value === "dark";
+}
+
+/**
+ * 后台「外观设置 → 默认外观」（`/api/config` 的 `preferred_theme`：auto / dark / light）→ 主题的外观值。
+ * 缺席或认不出返回 undefined：老后端不下发，交给主题自己的默认（跟随系统）。
+ */
+export function resolvePreferredAppearance(value: unknown): Appearance | undefined {
+  if (value === "dark" || value === "light") return value;
+  if (value === "auto") return "system";
+  return undefined;
+}
+
+/**
+ * 把后台「默认外观」垫在主题设置的最底层：theme_options 或本机设置里写了 `defaultAppearance`
+ * 就压过它。站长在后台改默认外观，没专门给主题配过外观的站点就会跟着走。
+ */
+export function withPreferredAppearance<T extends Record<string, unknown>>(
+  preferred: Appearance | undefined,
+  settings: T,
+): T {
+  return preferred ? ({ defaultAppearance: preferred, ...settings } as T) : settings;
 }
 
 function normalizeAppearance(
@@ -170,7 +198,7 @@ export function normalizeThemeSettings(
   settings: (ThemeSettings & Record<string, unknown>) | null | undefined,
 ): ResolvedThemeSettings {
   // 没配过就给电信/联通/移动三条线路：多线路模式默认开着，一条任务 id 都没有会静默退回
-  // 单线路，站长会以为开关没生效。显式配过就尊重原值 —— 条数由站长定（1~4 条都算配好了），
+  // 单线路，站长会以为开关没生效。显式配过就尊重原值 —— 条数由站长定（1~8 条都算配好了），
   // 只有空数组才回退单线路。
   const homepageMultiPingTaskIds =
     settings?.homepageMultiPingTaskIds == null
@@ -199,6 +227,9 @@ export function normalizeThemeSettings(
     // 至少一条时启用（见 isHomepageMultiPingConfigured）。
     enableHomepageMultiPing: enabledUnlessFalse(settings?.enableHomepageMultiPing),
     homepageMultiPingTaskIds,
+    // 站长在卡片上点线路名换好、「保存到后端」写上来的逐节点换线（行号 → 线路 id）。线路 id 这里只校验
+    // 是正整数（util 层不认线路表）；本机那份在 pingLineOverrideStore 里另按线路表筛。
+    homepagePingLineOverrides: normalizePingLineOverridesByNode(settings?.homepagePingLineOverrides),
     // 默认关闭(需手动开启):给访客展示的是模拟数据,必须由站长显式决定。
     fakePingForUnbound: settings?.fakePingForUnbound === true,
     showHomeOverview: enabledUnlessFalse(settings?.showHomeOverview),

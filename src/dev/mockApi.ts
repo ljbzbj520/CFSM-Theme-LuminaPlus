@@ -319,7 +319,9 @@ function buildHistory(serverId: string, hours: number) {
       ping_bd: Math.round(clamp(21 + Math.sin(phase + 3) * 9, 1, 400)),
       ping_node_1: Math.round(clamp(46 + Math.sin(phase + 4) * 14, 1, 400)),
       ping_node_2: Math.round(clamp(96 + Math.sin(phase + 5) * 30, 1, 400)),
-      ping_node_3: null,
+      // 后端对「没配探测目标」的槽位下发的是 false（2026-09-09 实测），不是 null；
+      // 这里两种形状各造一个，确保「不存在就不展示」两条路都覆盖到。
+      ping_node_3: false,
       ping_node_4: null,
       loss_ct: 0,
       loss_cu: i % 17 === 0 ? 20 : 0,
@@ -327,7 +329,7 @@ function buildHistory(serverId: string, hours: number) {
       loss_bd: 0,
       loss_node_1: 0,
       loss_node_2: i % 23 === 0 ? 8 : 0,
-      loss_node_3: null,
+      loss_node_3: false,
       loss_node_4: null,
       load_avg: "0.42 0.38 0.31",
       kernel_version: server.kernel_version,
@@ -335,6 +337,9 @@ function buildHistory(serverId: string, hours: number) {
   }
   return rows;
 }
+
+/** 「保存到后端」写进来的站点主题配置，只存在内存里（刷新页面就没了），够本地走一遍发布流程。 */
+let mockThemeOptions: Record<string, unknown> = {};
 
 export function installDevMockApi() {
   const nativeFetch = window.fetch.bind(window);
@@ -355,17 +360,36 @@ export function installDevMockApi() {
         headers: { "Content-Type": "application/json" },
       });
 
+    if (url.pathname === "/api/theme_options" && init?.method?.toUpperCase() === "POST") {
+      const body = JSON.parse(String(init.body ?? "{}")) as { theme_options?: unknown };
+      const next = body.theme_options;
+      if (!next || typeof next !== "object" || Array.isArray(next)) {
+        return new Response(JSON.stringify({ error: "invalidThemeOptionsFormat", code: 400 }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      mockThemeOptions = next as Record<string, unknown>;
+      return json({ success: true, theme_options: mockThemeOptions, message: "updateSuccess" });
+    }
+
     if (url.pathname === "/api/config") {
+      // 本地验「登录站长才看得到的东西」（版本更新提醒等）：localStorage 里放任意 jwt_token 就当已登录。
+      // 真后端也是这样：最新版本号只对登录请求下发。
+      const loggedIn = Boolean(window.localStorage.getItem("jwt_token"));
       return json({
-        version: "2.7.12 Beta",
+        version: "2.8.5 Beta5",
+        ...(loggedIn ? { last_workers_version: "2.8.6", last_agent_version: "1.0.3" } : {}),
         is_public: true,
-        authorization: false,
+        authorization: loggedIn,
+        preferred_theme: "auto",
+        frontend_ws_timeout_minutes: 0,
         turnstile_enabled: false,
         turnstile_login_enabled: false,
         turnstile_site_key: "",
         site_title: "Mock Monitor",
         display_mode: "bar",
-        theme_options: {},
+        theme_options: mockThemeOptions,
         verified: false,
         turnstile_verified: null,
         long_history_points: 120,

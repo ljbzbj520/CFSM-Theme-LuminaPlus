@@ -20,8 +20,8 @@ export function isHomepageMultiPingConfigured(taskIds: readonly number[]): boole
 }
 
 /**
- * CF-Server-Monitor 的探测点是固定的四条线路（电信/联通/移动/BD），每台节点都具备，
- * 因此没有绑定关系的节点直接落到默认线路，而不是不显示延迟。
+ * 兜底的默认线路：电信。CF-Server-Monitor 的探测线路由后端固定（八条），没有绑定关系的节点
+ * 直接落到默认线路，而不是不显示延迟。
  */
 export const DEFAULT_HOMEPAGE_PING_TASK_ID = 1;
 
@@ -63,6 +63,24 @@ export function normalizeHomepageMultiPingTaskIds(value: unknown): number[] {
     if (normalized.length === HOMEPAGE_MULTI_PING_MAX_COUNT) break;
   }
   return normalized;
+}
+
+/**
+ * 把多线路的第 `slot` 条换成 `taskId`。选的线路已经在别的槽位时**两条互换**，不会选出两条一样的线路
+ * —— 和首页卡片上点线路名换线路同一个口径（见 pingLineOverrides 的 `switchPingLine`）。
+ * 槽位越界时原样返回（拷贝）。
+ */
+export function assignHomepageMultiPingTask(
+  taskIds: readonly number[],
+  slot: number,
+  taskId: number,
+): number[] {
+  const next = [...taskIds];
+  if (!Number.isInteger(slot) || slot < 0 || slot >= next.length) return next;
+  const shownAt = next.indexOf(taskId);
+  if (shownAt >= 0 && shownAt !== slot) next[shownAt] = next[slot]!;
+  next[slot] = taskId;
+  return next;
 }
 
 export function normalizeHomepagePingTaskBindings(

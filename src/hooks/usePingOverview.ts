@@ -10,12 +10,18 @@ import {
   type PingLiveSample,
 } from "@/services/pingLiveStore";
 import {
+  getAllPingLineOverrides,
+  getPingLineOverrides,
+  subscribePingLineOverrides,
+} from "@/services/pingLineOverrideStore";
+import {
+  CARRIER_TASKS,
   CARRIER_TASK_BY_ID,
   DEFAULT_CARRIER_NAMES,
   carrierTaskName,
   inferIntervalSeconds,
 } from "@/services/cfsm/mappers";
-import { CARRIER_LOSS_KEYS } from "@/types/cfsm";
+import { CARRIER_KEYS, CARRIER_LOSS_KEYS } from "@/types/cfsm";
 import type {
   CarrierNames,
   CarrierPingSnapshot,
@@ -23,6 +29,12 @@ import type {
   PingOverviewBucket,
   PingOverviewItem,
 } from "@/types/cfsm";
+import {
+  nodePingLineOverrides,
+  resolveNodePingLineTaskIds,
+  type PingLineOverrides,
+  type PingLineOverridesByNode,
+} from "@/utils/pingLineOverrides";
 import { resolvePingSampleCounts } from "@/utils/pingMetrics";
 import {
   invertHomepagePingTaskBindings,
@@ -211,7 +223,7 @@ const lineCache = new WeakMap<object, Map<string, HomepagePingLine[]>>();
 
 function getCachedLines(
   client: string,
-  taskIds: number[],
+  taskIds: readonly number[],
   samples: readonly PingLiveSample[],
   sampleIntervalMs?: number,
   names: CarrierNames = DEFAULT_CARRIER_NAMES,
@@ -245,11 +257,14 @@ function getCachedLines(
   return lines;
 }
 
-/** 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼所有名字。 */
+/**
+ * 默认名走同一个常量，键里只写个短标记，免得每次渲染都拼一遍名字。
+ * 改过名时按线路表逐条拼、不手写字段：手写时只拼了前四条，站长只改 Node 1~4 的名字，缓存就一直顶回旧名字。
+ */
 function carrierNamesKey(names: CarrierNames): string {
   return names === DEFAULT_CARRIER_NAMES
     ? "default"
-    : `${names.ct}|${names.cu}|${names.cm}|${names.bd}|${names.node_1 ?? ""}|${names.node_2 ?? ""}|${names.node_3 ?? ""}|${names.node_4 ?? ""}`;
+    : CARRIER_KEYS.map((key) => names[key]).join("|");
 }
 
 function usePingSamples(uuid: string, enabled: boolean): readonly PingLiveSample[] {
@@ -327,16 +342,79 @@ export function useNodePingOverviewLines(
   customCarrierNames?: CarrierNames,
 ): HomepagePingLine[] {
   const samples = usePingSamples(uuid, enabled);
-  const { homepageMultiPingTaskIds } = useThemeSettings();
+  const taskIds = useNodeMultiPingTaskIds(uuid);
   const carrierNames = useCarrierNames();
   const effectiveNames = customCarrierNames ?? carrierNames;
   return useMemo(
     () =>
       enabled
-        ? getCachedLines(uuid, homepageMultiPingTaskIds, samples, undefined, effectiveNames)
+        ? getCachedLines(uuid, taskIds, samples, undefined, effectiveNames)
         : EMPTY_PING_LINES,
-    [effectiveNames, enabled, homepageMultiPingTaskIds, samples, uuid],
+    [effectiveNames, enabled, samples, taskIds, uuid],
   );
+}
+
+/** 这台节点在本机换过的线路；没换过是同一个空表，引用稳定。 */
+export function useNodePingLineOverrides(uuid: string): PingLineOverrides {
+  const getSnapshot = useCallback(() => getPingLineOverrides(uuid), [uuid]);
+  return useSyncExternalStore(subscribePingLineOverrides, getSnapshot, getSnapshot);
+}
+
+/** 本机所有节点换过的线路（设置页拼「保存到后端」快照用）。 */
+export function useAllPingLineOverrides(): PingLineOverridesByNode {
+  return useSyncExternalStore(
+    subscribePingLineOverrides,
+    getAllPingLineOverrides,
+    getAllPingLineOverrides,
+  );
+}
+
+/**
+ * 多线路模式下这台节点实际显示哪几条线路，三层叠：站点的 `homepageMultiPingTaskIds` 打底 →
+ * 站长存到后端的逐节点换线（`homepagePingLineOverrides`）→ 本机在卡片上换过的行
+ * （`pingLineOverrideStore`）。取数（上面的 `useNodePingOverviewLines`）和卡片排行
+ * （`useNodeCardModel`）必须共用这一份，否则会出现「行上写着电信、画的是联通」。
+ * 条数仍由站点设置决定，只能换、不能加减。
+ */
+export function useNodeMultiPingTaskIds(uuid: string): readonly number[] {
+  const { homepageMultiPingTaskIds, homepagePingLineOverrides } = useThemeSettings();
+  const siteOverrides = nodePingLineOverrides(homepagePingLineOverrides, uuid);
+  const localOverrides = useNodePingLineOverrides(uuid);
+  return useMemo(
+    () =>
+      resolveNodePingLineTaskIds(
+        resolveNodePingLineTaskIds(homepageMultiPingTaskIds, siteOverrides),
+        localOverrides,
+      ),
+    [homepageMultiPingTaskIds, localOverrides, siteOverrides],
+  );
+}
+
+const EMPTY_TASK_IDS: readonly number[] = [];
+const availableTaskIdsCache = new WeakMap<object, readonly number[]>();
+
+/**
+ * 这台节点有数据的线路（缓冲区里至少一个样本有值，探测失败的负值也算），按线路表顺序。
+ *
+ * 卡片线路切换菜单只列这些：后端对没配探测目标的槽位下发 `false`（→ null），那几条对这台节点
+ * 永远是空的，换过去只会是一行「无样本」——「没数据就不展示」是站长定的口径。
+ * 按样本数组缓存，同一份缓冲区返回同一个数组。
+ */
+export function listAvailablePingTaskIds(
+  samples: readonly PingLiveSample[],
+): readonly number[] {
+  if (samples.length === 0) return EMPTY_TASK_IDS;
+  const cached = availableTaskIdsCache.get(samples);
+  if (cached) return cached;
+  const taskIds = CARRIER_TASKS.filter((task) =>
+    samples.some((sample) => sample.ping[task.key] != null),
+  ).map((task) => task.id);
+  availableTaskIdsCache.set(samples, taskIds);
+  return taskIds;
+}
+
+export function useAvailablePingTaskIds(uuid: string, enabled = true): readonly number[] {
+  return listAvailablePingTaskIds(usePingSamples(uuid, enabled));
 }
 
 /**
