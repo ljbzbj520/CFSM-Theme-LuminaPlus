@@ -205,6 +205,20 @@ body::after {
   color: var(--text-primary);
 }
 
+/* 同步成功那条只报个平安，几秒后自己消失：不给按钮，图标和边框用强调色区别于失败。 */
+.site-theme-sync-notice.is-success {
+  border-color: color-mix(in srgb, var(--accent-500) 45%, var(--border));
+}
+
+.site-theme-sync-notice.is-success .realtime-session-prompt-icon {
+  color: var(--accent-500);
+}
+
+/* 两条提示同时出现（实时连接到时限 + 同步失败）时往上错开，别叠在一起。 */
+.realtime-session-prompt ~ .site-theme-sync-notice {
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 5.5rem);
+}
+
 @media (max-width: 560px) {
   .realtime-session-prompt {
     flex-wrap: wrap;
@@ -498,37 +512,6 @@ body::after {
   margin-left: auto;
 }
 
-.metric-color-save-backend {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  cursor: pointer;
-  padding: 4px 9px;
-  border-radius: 7px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0;
-  white-space: nowrap;
-  color: #fff;
-  background: var(--accent-500);
-  transition: opacity 160ms ease;
-}
-.metric-color-save-backend > svg {
-  flex: 0 0 auto;
-}
-.metric-color-save-backend:hover:not(:disabled) {
-  opacity: 0.85;
-}
-.metric-color-save-backend:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.metric-color-notice {
-  font-size: 11px;
-  color: var(--accent-500);
-}
-
 .dark-depth-control {
   display: flex;
   flex-direction: column;
@@ -769,105 +752,193 @@ body::after {
 }
 
 /* 主题管理报头:eyebrow + 大标题 + 右侧账目式元信息,和资产页同一套编辑排版语言。 */
-.theme-masthead {
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: 20px;
-  background:
-    linear-gradient(
-      130deg,
-      color-mix(in srgb, var(--accent-500) 5%, transparent) 0%,
-      transparent 44%
-    ),
-    var(--surface-a);
-  padding: 20px 24px 22px;
-}
-
-.theme-masthead-topline {
+/* 主题设置页的粘性顶栏：返回 + 标题 + 操作/同步状态压成一行，滚动时钉在页顶。
+   原来是一整块 masthead（大标题、说明段、统计），一屏里先吃掉 200px，还跟着页面滚走。 */
+.theme-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 35;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  gap: 10px 12px;
+  padding: 9px 14px;
+  border: 1px solid var(--hairline);
+  border-radius: 16px;
+  /* 必须完全不透明：半透明时下面滚过去的设置会透出来，看着像两层字叠在一起。
+     用 --surface 而不是 --surface-a，后者会跟着「卡片透明度」一起变透。 */
+  background: var(--surface);
+  box-shadow: 0 10px 24px -20px rgba(0, 0, 0, 0.55);
 }
 
-.theme-masthead-main {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px 40px;
-  border-top: 1px solid color-mix(in srgb, var(--hairline) 90%, transparent);
-  padding-top: 18px;
+.theme-topbar-back {
+  flex: none;
 }
 
-.theme-masthead-headings {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.theme-masthead-kicker {
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.2em;
-}
-
-.theme-masthead-title {
+.theme-topbar-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: clamp(26px, 3.4vw, 34px);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1;
+  font-size: 16px;
+  font-weight: 760;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
 }
 
-.theme-masthead-desc {
-  margin: 0;
-  max-width: 52ch;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
-}
+@media (max-width: 720px) {
+  /* 窄屏只留箭头：站长那行「主题设置 + 同步状态」才挤得下一行；访客的按钮会换到第二行横滑。 */
+  .theme-topbar-back span {
+    display: none;
+  }
 
-.theme-masthead-meta {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 26px;
-  margin: 0;
-}
-
-.theme-masthead-meta div {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.theme-masthead-meta dt {
-  color: var(--text-tertiary);
-  font-size: 10.5px;
-  font-weight: 680;
-  letter-spacing: 0.14em;
-}
-
-.theme-masthead-meta dd {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 740;
-  font-variant-numeric: tabular-nums;
 }
 
 .theme-manage-toolbar-actions {
   display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  /* 靠右用 margin-left:auto，不用 justify-content:flex-end —— 窄屏换行后按钮放不下时，
+     flex-end 会把最左边那个顶出容器外，还滚不回来（溢出方向反了）。 */
+  margin-left: auto;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
   gap: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.theme-manage-toolbar-actions::-webkit-scrollbar {
+  display: none;
+}
+
+/* 设置页的排版口径，一处改全页跟着改。分区标题 / 小节标题 / 字段名 / 说明四档，别再在 JSX 里写
+   text-[13px] font-medium 这种一次性组合 —— 之前同一层级的字在不同分区有 12px、13px 三四种写法。 */
+.setting-subhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-bottom: 8px;
+}
+
+.setting-subhead-title {
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 620;
+}
+
+.setting-field-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 560;
+}
+
+/* 一个分区里的字段统一两列铺开：标题在上、控件撑满格子，控件宽窄不一才是「乱」的来源。 */
+.setting-grid {
+  display: grid;
+  gap: 14px 16px;
+  align-items: start;
+}
+
+@media (min-width: 720px) {
+  .setting-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .setting-grid > .is-wide {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 分段控件在窄格子里平分宽度：is-prominent 的 140px 基准一到半格宽就换行，
+   每个选项占一整行、高度参差，看着就乱。 */
+.instance-segmented.is-prominent.is-even button,
+.instance-segmented.is-even button {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.instance-segmented button svg {
+  flex-shrink: 0;
+}
+
+/* 四五个选项一行平分，格子一窄（手机，或平板上「桌面端 / 移动端」两张卡并排）每个只剩 60px 上下，
+   「实时网速」这种四个字就顶出去、图标被压成点。按格子自己的宽度判断，不按视口：同一个视口宽度下
+   独占一行的控件放得下，半格宽的放不下。窄了就改成网格换行，四个排 2×2，五个排 3+2
+   （六列网格，前三个各占两列、后两个各占三列），每行都铺满。放控件的那层加 `.setting-segment-slot`。
+   430px：四个带图标的选项（「迷你卡片」最宽，内容 72px + 两侧 8px + 描边）刚好并排放下的卡片宽度约 414px，再留点余量。 */
+.setting-segment-slot {
+  container: setting-segment / inline-size;
+  min-width: 0;
+}
+
+@container setting-segment (max-width: 430px) {
+  .instance-segmented.is-prominent.is-even button {
+    padding: 0 4px;
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(4)) {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) > button {
+    grid-column: span 2;
+  }
+
+  .instance-segmented.is-even:has(> button:nth-child(5):last-child) > button:nth-child(n + 4) {
+    grid-column: span 3;
+  }
+}
+
+/* 选项多的字段（默认排序维度有 5 个）独占一行，剩下的三项并排，高度才齐。 */
+@media (min-width: 960px) {
+  .setting-grid.is-triple {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* 输入框 / 下拉和分段控件一样撑满格子。 */
+.setting-control {
+  width: 100%;
+}
+
+/* 设置页的下拉框自己画箭头：原生箭头离右边框只有几像素，左边文字却缩进 12px，一边宽一边窄。
+   两边都留 12px，箭头那侧再让出图标的位置，长选项名截断时不会压到箭头上。 */
+.setting-select {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+
+.setting-select > select {
+  width: 100%;
+  min-width: 0;
+  padding: 8px 34px 8px 12px;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+
+.setting-select-icon {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  color: var(--text-secondary);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.setting-hint {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .theme-manage-button {
@@ -949,6 +1020,136 @@ body::after {
       color-mix(in srgb, var(--accent-500) 100%, white 8%) 0%,
       color-mix(in srgb, var(--accent-strong) 92%, white 8%) 100%
     );
+}
+
+/* 登录站长工具栏上替代保存按钮的同步状态：和按钮同高、不可点，所以不要边框和阴影。 */
+.theme-manage-sync-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.theme-manage-sync-status.is-error {
+  color: var(--status-offline);
+}
+
+/* ------------------------------------------------------------------ *
+ * 主题设置页：分组导航
+ * 九个分区一条直线排下来时，桌面 5.4 屏、手机 6.7 屏，改一项要扫整页；
+ * 现在一次只渲染一组，导航在桌面端粘在左边、手机端是顶部一条横滑标签；顶栏也钉住。
+ * ------------------------------------------------------------------ */
+/* 设置区是独立滚动区：高度由 JS 量出来（顶栏到页脚之间），页面本身正好不用滚，
+   卡片只在自己的框里滚，永远不会滑到顶栏那一块去 —— 两个框之间始终是同一道缝。 */
+.theme-manage-body {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+  height: var(--theme-body-height, auto);
+  min-height: 0;
+}
+
+.theme-manage-sections {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  gap: 20px;
+  overflow-y: auto;
+  /* 滚到头不要把整页也带着滚。 */
+  overscroll-behavior: contain;
+  /* 滚动条贴着卡片会压住圆角，留一点道。 */
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+
+.theme-tab-rail {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.theme-tab-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.theme-tab {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  font-weight: 620;
+  white-space: nowrap;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.theme-tab:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.theme-tab[data-active="true"] {
+  border-color: color-mix(in srgb, var(--accent-500) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent-500) 12%, var(--surface-a));
+  color: var(--text-primary);
+}
+
+.theme-tab-icon {
+  flex: none;
+  color: var(--text-tertiary);
+}
+
+.theme-tab[data-active="true"] .theme-tab-icon {
+  color: var(--accent-500);
+}
+
+/* 说明文字只在桌面端的竖排导航里出现，手机上横滑标签放不下。 */
+.theme-tab-hint {
+  display: none;
+}
+
+@media (min-width: 900px) {
+  .theme-manage-body {
+    grid-template-columns: 210px minmax(0, 1fr);
+  }
+
+  .theme-tab-rail {
+    /* 设置区自己滚，导航不用再 sticky；分组多到放不下时它自己滚。 */
+    height: 100%;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .theme-tab {
+    flex-wrap: wrap;
+    white-space: normal;
+  }
+
+  .theme-tab-hint {
+    display: block;
+    width: 100%;
+    padding-left: 22px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
 }
 
 .theme-manage-button.is-compact {
@@ -1065,7 +1266,7 @@ body::after {
   gap: 5px;
 }
 
-/* 编号分区小标(仅主题管理传入 kicker 时出现):两位序号用品牌色 + 分区名。 */
+/* 分区小标(仅主题管理传入 kicker 时出现)。 */
 .instance-panel-kicker {
   display: inline-flex;
   align-items: center;
@@ -1075,14 +1276,6 @@ body::after {
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.16em;
-}
-
-.instance-panel-kicker-num {
-  color: var(--accent-500);
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
 }
 
 /* 带 kicker 的面板(主题管理各分区)标题区加一道发丝下线,读作报告的分节。 */
