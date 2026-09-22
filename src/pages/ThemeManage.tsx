@@ -38,6 +38,7 @@ import {
   Sparkles,
   Sun,
   SunMoon,
+  Tag,
   Wallpaper,
   X,
 } from "lucide-react";
@@ -58,7 +59,7 @@ import {
 } from "@/hooks/useSiteThemeOptions";
 import { useLocalThemeSettings } from "@/hooks/useThemeSettings";
 import { getNodes } from "@/services/api";
-import { carrierPingTasks } from "@/services/cfsm/mappers";
+import { CARRIER_TASKS, carrierPingTasks } from "@/services/cfsm/mappers";
 import { clearPingLineOverrides } from "@/services/pingLineOverrideStore";
 import {
   getLocalThemeSettings,
@@ -66,7 +67,7 @@ import {
   saveLocalThemeSettings,
 } from "@/services/themeSettingsStore";
 import { copyText } from "@/utils/clipboard";
-import type { NodeInfo, PingTask, ThemeSettings } from "@/types/cfsm";
+import type { CarrierKey, NodeInfo, PingTask, ThemeSettings } from "@/types/cfsm";
 import {
   calculateCostSummary,
   calculateCostPremiumAmount,
@@ -98,6 +99,7 @@ import {
 } from "@/utils/pingTasks";
 import {
   DEFAULT_THEME_SETTINGS,
+  normalizeServerCarrierNames,
   normalizeThemeSettings,
   withPreferredAppearance,
   type ResolvedThemeSettings,
@@ -325,6 +327,11 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
         .map((uuid) => [uuid, settings.costPremiums[uuid]]),
     ),
     costRateApiUrl: settings.costRateApiUrl,
+    serverCarrierNames: Object.fromEntries(
+      Object.keys(settings.serverCarrierNames ?? {})
+        .sort()
+        .map((uuid) => [uuid, settings.serverCarrierNames[uuid]]),
+    ),
     surfaceOpacity: settings.surfaceOpacity,
   };
 }
@@ -733,6 +740,101 @@ const PremiumList = memo(function PremiumList({
   );
 });
 
+const NodeCarrierItem = memo(function NodeCarrierItem({
+  client,
+  carrierNames,
+  customNames,
+  expanded,
+  onToggleExpand,
+  onPatchName,
+  onClear,
+}: {
+  client: NodeInfo;
+  carrierNames: Record<CarrierKey, string>;
+  customNames?: Partial<Record<CarrierKey, string>>;
+  expanded: boolean;
+  onToggleExpand: (uuid: string) => void;
+  onPatchName: (uuid: string, key: CarrierKey, val: string) => void;
+  onClear: (uuid: string) => void;
+}) {
+  const customCount = customNames
+    ? Object.values(customNames).filter((v) => typeof v === "string" && v.trim().length > 0).length
+    : 0;
+
+  return (
+    <div className="surface-inset overflow-hidden">
+      <button
+        type="button"
+        onClick={() => onToggleExpand(client.uuid)}
+        className="flex w-full items-center justify-between px-3.5 py-2.5 text-left transition-colors hover:bg-[var(--surface-hover)]"
+      >
+        <div className="flex min-w-0 items-center gap-2">
+          {client.region && <Flag region={client.region} size={14} />}
+          <span className="truncate text-[13px] font-medium text-[var(--text-primary)]">
+            {client.name}
+          </span>
+          {client.group && (
+            <span className="shrink-0 rounded bg-[var(--surface-sunken)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)]">
+              {client.group}
+            </span>
+          )}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {customCount > 0 ? (
+            <span className="rounded bg-[var(--accent-tint)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--accent)]">
+              已定制 {customCount} 条
+            </span>
+          ) : (
+            <span className="text-[12px] text-[var(--text-tertiary)]">默认</span>
+          )}
+          {expanded ? (
+            <ChevronUp size={16} className="text-[var(--text-tertiary)]" />
+          ) : (
+            <ChevronDown size={16} className="text-[var(--text-tertiary)]" />
+          )}
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-[var(--border-subtle)] px-3.5 py-3">
+          <div className="mb-2.5 flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
+            <span>留空继承全局默认名称，支持为任意线路单独命名：</span>
+            {customCount > 0 && (
+              <button
+                type="button"
+                onClick={() => onClear(client.uuid)}
+                className="text-[11px] text-[var(--status-error)] hover:underline"
+              >
+                清空此节点自定义
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+            {CARRIER_TASKS.map((task) => {
+              const defaultName = carrierNames[task.key] || task.name;
+              const val = customNames?.[task.key] ?? "";
+              return (
+                <label key={task.id} className="flex items-center gap-2 text-[12px]">
+                  <span className="w-20 shrink-0 truncate text-[var(--text-secondary)]" title={task.name}>
+                    {task.name}
+                  </span>
+                  <input
+                    type="text"
+                    value={val}
+                    onChange={(e) => onPatchName(client.uuid, task.key, e.target.value)}
+                    placeholder={defaultName}
+                    className="surface-inset min-w-0 flex-1 px-2.5 py-1 text-[12.5px] outline-none placeholder:text-[var(--text-tertiary)]"
+                  />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
 /* ------------------------------------------------------------------ *
  * 设置分组与搜索直达
  * ------------------------------------------------------------------ */
@@ -850,6 +952,8 @@ export function ThemeManage() {
   const [taskSearch, setTaskSearch] = useState("");
   const [nodeSearch, setNodeSearch] = useState("");
   const [premiumSearch, setPremiumSearch] = useState("");
+  const [carrierNodeSearch, setCarrierNodeSearch] = useState("");
+  const [expandedCarrierNodeUuid, setExpandedCarrierNodeUuid] = useState<string | null>(null);
   // 访客的「已保存到本机」：这次会话存过一次才显示（站长那边看同步状态）。
   const [savedLocally, setSavedLocally] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -1094,6 +1198,87 @@ export function ThemeManage() {
     () => filterClients(sortedClients, premiumSearch),
     [premiumSearch, sortedClients],
   );
+  const filteredCarrierClients = useMemo(
+    () => filterClients(sortedClients, carrierNodeSearch),
+    [carrierNodeSearch, sortedClients],
+  );
+
+  const customizedCarrierNodeCount = useMemo(
+    () =>
+      Object.keys(draft.serverCarrierNames ?? {}).filter((uuid) => {
+        const entry = draft.serverCarrierNames[uuid];
+        return (
+          entry &&
+          Object.values(entry).some(
+            (val) => typeof val === "string" && val.trim().length > 0,
+          )
+        );
+      }).length,
+    [draft.serverCarrierNames],
+  );
+
+  const patchServerCarrierName = useCallback(
+    (uuid: string, key: CarrierKey, rawValue: string) => {
+      setDraft((prev) => {
+        const nextMap = { ...prev.serverCarrierNames };
+        const currentEntry = { ...(nextMap[uuid] ?? {}) };
+        const trimmed = rawValue.trim();
+
+        if (trimmed.length > 0) {
+          currentEntry[key] = rawValue;
+        } else {
+          delete currentEntry[key];
+        }
+
+        if (Object.keys(currentEntry).length > 0) {
+          nextMap[uuid] = currentEntry;
+        } else {
+          delete nextMap[uuid];
+        }
+
+        return { ...prev, serverCarrierNames: nextMap };
+      });
+    },
+    [],
+  );
+
+  const clearServerCarrierNames = useCallback(
+    (uuid: string) => {
+      setDraft((prev) => {
+        if (!prev.serverCarrierNames[uuid]) return prev;
+        const nextMap = { ...prev.serverCarrierNames };
+        delete nextMap[uuid];
+        return { ...prev, serverCarrierNames: nextMap };
+      });
+    },
+    [],
+  );
+
+  const toggleCarrierNodeExpanded = useCallback((uuid: string) => {
+    setExpandedCarrierNodeUuid((current) => (current === uuid ? null : uuid));
+  }, []);
+
+  // 自动平滑迁移：若后端节点返回了历史自定义线路名（client.carrierNames），且主题设置中尚未单独配置过，
+  // 自动带入草稿，让用户在界面即刻可见并无缝自动保存至 theme_options。
+  useEffect(() => {
+    if (!adminClients || adminClients.length === 0) return;
+    setDraft((prev) => {
+      let modified = false;
+      const nextNames = { ...prev.serverCarrierNames };
+      for (const client of adminClients) {
+        if (
+          !nextNames[client.uuid] &&
+          client.carrierNames &&
+          Object.keys(client.carrierNames).length > 0
+        ) {
+          nextNames[client.uuid] = { ...client.carrierNames };
+          modified = true;
+        }
+      }
+      if (!modified) return prev;
+      return { ...prev, serverCarrierNames: nextNames };
+    });
+  }, [adminClients]);
 
   // 溢价表格里"当前剩余价值"仅供参考,用已保存的汇率源/忽略名单算(不用草稿里还没保存的
   // 编辑),口径与资产统计页完全一致(同一个 calculateCostSummary),但不叠加溢价本身。
@@ -1237,6 +1422,7 @@ export function ThemeManage() {
       costIgnoredNodes: normalizeCostIgnoredNodes(costIgnoredText),
       costPremiums: normalizeCostPremiums(rest.costPremiums),
       costRateApiUrl: normalizeCostRateApiUrl(rest.costRateApiUrl),
+      serverCarrierNames: normalizeServerCarrierNames(rest.serverCarrierNames),
     };
   }, [draft]);
 
@@ -2447,6 +2633,67 @@ export function ThemeManage() {
                       })}
                   </div>
 
+                </div>
+              </InstancePanel>
+
+              <InstancePanel
+                id="set-node-carrier-names"
+                kicker="别名"
+                title="逐节点自定义线路名称"
+                aside={<Tag size={16} />}
+              >
+                <div className="flex flex-col gap-3">
+                  <p className="setting-hint">
+                    可为各服务器单独指定探测线路显示别名（如将某台服务器的线路 1 命名为“上海电信”、线路 2 命名为“香港CN2”等）；留空自动继承全局线路名称。所有配置随主题保存到云端外观设置，无需侵入探针主程序。
+                    已单独配置 {customizedCarrierNodeCount} / {sortedClients.length} 台。
+                  </p>
+                  <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
+                    <Search size={14} className="text-[var(--text-tertiary)]" />
+                    <input
+                      value={carrierNodeSearch}
+                      onChange={(event) => setCarrierNodeSearch(event.target.value)}
+                      placeholder="搜索节点名称、分组或地区"
+                      aria-label="搜索节点"
+                      className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
+                    />
+                  </label>
+
+                  <div className="flex flex-col gap-2.5">
+                    {clientsLoading && (
+                      <div className="flex min-h-[15vh] items-center justify-center">
+                        <Spinner size={24} />
+                      </div>
+                    )}
+
+                    {!clientsLoading && sortedClients.length === 0 && (
+                      <div className="theme-manage-empty-state">
+                        <span>没有可用的服务器节点。</span>
+                      </div>
+                    )}
+
+                    {!clientsLoading && sortedClients.length > 0 && filteredCarrierClients.length === 0 && (
+                      <div className="surface-inset px-4 py-5 text-[13px] text-[var(--text-secondary)]">
+                        没有匹配的节点。
+                      </div>
+                    )}
+
+                    {!clientsLoading &&
+                      filteredCarrierClients.map((client) => {
+                        const expanded = expandedCarrierNodeUuid === client.uuid;
+                        return (
+                          <NodeCarrierItem
+                            key={client.uuid}
+                            client={client}
+                            carrierNames={carrierNames}
+                            customNames={draft.serverCarrierNames?.[client.uuid]}
+                            expanded={expanded}
+                            onToggleExpand={toggleCarrierNodeExpanded}
+                            onPatchName={patchServerCarrierName}
+                            onClear={clearServerCarrierNames}
+                          />
+                        );
+                      })}
+                  </div>
                 </div>
               </InstancePanel>
             </>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THEME_SETTINGS, normalizeThemeSettings } from "@/utils/themeSettings";
+import { DEFAULT_THEME_SETTINGS, normalizeServerCarrierNames, normalizeThemeSettings } from "@/utils/themeSettings";
 
 describe("normalizeThemeSettings", () => {
   it("keeps mini and falls unknown saved view modes back to compact", () => {
@@ -167,5 +167,54 @@ describe("normalizeThemeSettings", () => {
   it("defaults 卡片显示价格 to on and honours an explicit false", () => {
     expect(normalizeThemeSettings(null).showCardPrice).toBe(true);
     expect(normalizeThemeSettings({ showCardPrice: false } as never).showCardPrice).toBe(false);
+  });
+});
+
+describe("normalizeServerCarrierNames", () => {
+  it("normalizes and cleans invalid or empty carrier names", () => {
+    expect(normalizeServerCarrierNames(undefined)).toEqual({});
+    expect(normalizeServerCarrierNames(null)).toEqual({});
+    expect(normalizeServerCarrierNames("invalid")).toEqual({});
+    expect(normalizeServerCarrierNames([])).toEqual({});
+
+    const raw = {
+      "node-1": {
+        ct: "  上海电信  ",
+        cu: "广州联通",
+        cm: "",
+        bd: "   ",
+        node_1: "香港CN2",
+        unknown_key: "something",
+      },
+      "node-empty": {
+        ct: "   ",
+      },
+      "": {
+        ct: "invalid uuid",
+      },
+    };
+
+    expect(normalizeServerCarrierNames(raw)).toEqual({
+      "node-1": {
+        ct: "上海电信",
+        cu: "广州联通",
+        node_1: "香港CN2",
+      },
+    });
+  });
+
+  it("normalizes serverCarrierNames in normalizeThemeSettings and round-trips", () => {
+    const raw = {
+      serverCarrierNames: {
+        "1": { ct: "电信CN2", node_2: "日本原生" },
+      },
+    };
+    const normalized = normalizeThemeSettings(raw as never);
+    expect(normalized.serverCarrierNames).toEqual({
+      "1": { ct: "电信CN2", node_2: "日本原生" },
+    });
+
+    const roundTripped = normalizeThemeSettings(JSON.parse(JSON.stringify(normalized)));
+    expect(roundTripped.serverCarrierNames).toEqual(normalized.serverCarrierNames);
   });
 });

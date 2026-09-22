@@ -518,6 +518,8 @@ export interface ThemeSettings {
   >;
   costRateApiUrl?: string;
   surfaceOpacity?: number;
+  /** 逐节点自定义线路名称映射：node.uuid -> 8条线路自定义别名 */
+  serverCarrierNames?: Record<string, Partial<CarrierNames>>;
 }
 
 /** 图表用的一行历史负载记录，单位与 NodeMetrics 一致。 */

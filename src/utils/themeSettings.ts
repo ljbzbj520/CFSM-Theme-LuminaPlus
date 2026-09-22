@@ -1,4 +1,4 @@
-import type { ThemeSettings } from "@/types/cfsm";
+import { CARRIER_KEYS, type CarrierNames, type ThemeSettings } from "@/types/cfsm";
 import { DEFAULT_SURFACE_OPACITY, normalizeSurfaceOpacity } from "@/utils/background";
 import {
   DEFAULT_COST_RATE_API_URL,
@@ -48,6 +48,8 @@ export interface ResolvedThemeSettings {
   enableHomepageMultiPing: boolean;
   homepageMultiPingTaskIds: number[];
   homepagePingLineOverrides: PingLineOverridesByNode;
+  /** 逐节点自定义线路名称映射：node.uuid -> 8条线路自定义别名 */
+  serverCarrierNames: Record<string, Partial<CarrierNames>>;
   showHomeOverview: boolean;
   /** 顶部总览里的「资产概览」卡（把每月花多少钱亮给所有访客，单独给个开关）。 */
   showAssetOverview: boolean;
@@ -96,6 +98,7 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   enableHomepageMultiPing: true,
   homepageMultiPingTaskIds: [...DEFAULT_HOMEPAGE_MULTI_PING_TASK_IDS],
   homepagePingLineOverrides: EMPTY_PING_LINE_OVERRIDES_BY_NODE,
+  serverCarrierNames: {},
   showHomeOverview: true,
   showAssetOverview: true,
   showGroupTabs: true,
@@ -218,6 +221,42 @@ function normalizeHomeSortDefault(
   };
 }
 
+export function normalizeServerCarrierNames(
+  value: unknown,
+): Record<string, Partial<CarrierNames>> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+
+  const result: Record<string, Partial<CarrierNames>> = {};
+  for (const [rawUuid, rawNames] of Object.entries(value)) {
+    const uuid = String(rawUuid || "").trim();
+    if (!uuid || !rawNames || typeof rawNames !== "object" || Array.isArray(rawNames)) {
+      continue;
+    }
+
+    const entry: Partial<CarrierNames> = {};
+    let hasValidField = false;
+
+    for (const key of CARRIER_KEYS) {
+      const val = (rawNames as Record<string, unknown>)[key];
+      if (typeof val === "string") {
+        const trimmed = val.trim();
+        if (trimmed.length > 0) {
+          entry[key] = trimmed;
+          hasValidField = true;
+        }
+      }
+    }
+
+    if (hasValidField) {
+      result[uuid] = entry;
+    }
+  }
+
+  return result;
+}
+
 export function normalizeThemeSettings(
   settings: (ThemeSettings & Record<string, unknown>) | null | undefined,
 ): ResolvedThemeSettings {
@@ -254,6 +293,7 @@ export function normalizeThemeSettings(
     // 站长在卡片上点线路名换好、「保存到后端」写上来的逐节点换线（行号 → 线路 id）。线路 id 这里只校验
     // 是正整数（util 层不认线路表）；本机那份在 pingLineOverrideStore 里另按线路表筛。
     homepagePingLineOverrides: normalizePingLineOverridesByNode(settings?.homepagePingLineOverrides),
+    serverCarrierNames: normalizeServerCarrierNames(settings?.serverCarrierNames),
     showHomeOverview: enabledUnlessFalse(settings?.showHomeOverview),
     showAssetOverview: enabledUnlessFalse(settings?.showAssetOverview),
     showGroupTabs: enabledUnlessFalse(settings?.showGroupTabs),
@@ -292,3 +332,4 @@ export function normalizeThemeSettings(
     surfaceOpacity: normalizeSurfaceOpacity(settings?.surfaceOpacity),
   };
 }
+

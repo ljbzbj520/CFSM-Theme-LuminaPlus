@@ -3,6 +3,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -10,13 +11,14 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { Check, RotateCcw } from "lucide-react";
+import { useNodeMeta } from "@/hooks/useNode";
 import {
   useAvailablePingTaskIds,
   useNodePingLineOverrides,
 } from "@/hooks/usePingOverview";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
-import { CARRIER_TASKS, carrierTaskName } from "@/services/cfsm/mappers";
+import { CARRIER_TASKS, carrierTaskName, resolveCarrierNames } from "@/services/cfsm/mappers";
 import { setPingLineOverrides } from "@/services/pingLineOverrideStore";
 import {
   EMPTY_PING_LINE_OVERRIDES,
@@ -102,10 +104,15 @@ function PingLineMenu({
   onClose: (restoreFocus: boolean) => void;
 }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const { homepageMultiPingTaskIds, homepagePingLineOverrides } = useThemeSettings();
+  const { homepageMultiPingTaskIds, homepagePingLineOverrides, serverCarrierNames } = useThemeSettings();
   const overrides = useNodePingLineOverrides(uuid);
   const available = useAvailablePingTaskIds(uuid);
   const carrierNames = useCarrierNames();
+  const nodeMeta = useNodeMeta(uuid);
+  const effectiveCarrierNames = useMemo(
+    () => resolveCarrierNames(serverCarrierNames?.[uuid] ?? nodeMeta?.carrierNames, carrierNames),
+    [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames],
+  );
   // 这台节点的「默认」= 站点线路表 + 站长存到后端的逐节点换线；本机换的行相对它记，「恢复默认」也回到它。
   const nodeDefault = resolveNodePingLineTaskIds(
     homepageMultiPingTaskIds,
@@ -232,7 +239,7 @@ function PingLineMenu({
             aria-current={active ? "true" : undefined}
             onClick={() => select(taskId)}
           >
-            <span className="ping-line-menu-label">{carrierTaskName(taskId, carrierNames)}</span>
+            <span className="ping-line-menu-label">{carrierTaskName(taskId, effectiveCarrierNames)}</span>
             {swaps && <span className="ping-line-menu-hint">互换</span>}
             {active && <Check size={14} aria-hidden />}
           </button>
