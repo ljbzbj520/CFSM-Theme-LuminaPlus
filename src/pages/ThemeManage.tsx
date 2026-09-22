@@ -67,7 +67,14 @@ import {
   saveLocalThemeSettings,
 } from "@/services/themeSettingsStore";
 import { copyText } from "@/utils/clipboard";
-import type { CarrierKey, NodeInfo, PingTask, ThemeSettings } from "@/types/cfsm";
+import {
+  CARRIER_KEYS,
+  type CarrierKey,
+  type CarrierNames,
+  type NodeInfo,
+  type PingTask,
+  type ThemeSettings,
+} from "@/types/cfsm";
 import {
   calculateCostSummary,
   calculateCostPremiumAmount,
@@ -1226,6 +1233,7 @@ export function ThemeManage() {
 
   const patchServerCarrierName = useCallback(
     (uuid: string, key: CarrierKey, rawValue: string) => {
+      editVersionRef.current += 1;
       setDraft((prev) => {
         const nextMap = { ...prev.serverCarrierNames };
         const currentEntry = { ...(nextMap[uuid] ?? {}) };
@@ -1251,6 +1259,7 @@ export function ThemeManage() {
 
   const clearServerCarrierNames = useCallback(
     (uuid: string) => {
+      editVersionRef.current += 1;
       setDraft((prev) => {
         if (!prev.serverCarrierNames[uuid]) return prev;
         const nextMap = { ...prev.serverCarrierNames };
@@ -1269,22 +1278,32 @@ export function ThemeManage() {
   // 自动带入草稿，让用户在界面即刻可见并无缝自动保存至 theme_options。
   useEffect(() => {
     if (!adminClients || adminClients.length === 0) return;
+    let hasChanges = false;
     setDraft((prev) => {
       let modified = false;
       const nextNames = { ...prev.serverCarrierNames };
       for (const client of adminClients) {
-        if (
-          !nextNames[client.uuid] &&
-          client.carrierNames &&
-          Object.keys(client.carrierNames).length > 0
-        ) {
-          nextNames[client.uuid] = { ...client.carrierNames };
-          modified = true;
+        if (!nextNames[client.uuid] && client.carrierNames) {
+          const validEntries: Partial<CarrierNames> = {};
+          for (const key of CARRIER_KEYS) {
+            const val = client.carrierNames[key];
+            if (typeof val === "string" && val.trim().length > 0) {
+              validEntries[key] = val.trim();
+            }
+          }
+          if (Object.keys(validEntries).length > 0) {
+            nextNames[client.uuid] = validEntries;
+            modified = true;
+          }
         }
       }
       if (!modified) return prev;
+      hasChanges = true;
       return { ...prev, serverCarrierNames: nextNames };
     });
+    if (hasChanges) {
+      editVersionRef.current += 1;
+    }
   }, [adminClients]);
 
   // 溢价表格里"当前剩余价值"仅供参考,用已保存的汇率源/忽略名单算(不用草稿里还没保存的
@@ -1555,6 +1574,7 @@ export function ThemeManage() {
     cancelSiteThemeSync();
     resetLocalThemeSettings();
     clearPingLineOverrides();
+    editVersionRef.current = 0;
     // 表单同步回站点默认值：否则会留下一份"已被清除但仍显示"的脏草稿。
     seedDrafts(
       normalizeThemeSettings(
@@ -1566,7 +1586,7 @@ export function ThemeManage() {
   };
 
   // 表单改了、还没到自动保存那一下（登录站长）。
-  const draftAwaitingAutoSave = draftSignature !== sourceSignature;
+  const draftAwaitingAutoSave = editVersionRef.current > 0 && draftSignature !== sourceSignature;
   const siteHasUnsyncedChanges = hasUnsyncedLocalChanges({
     hasLocalChanges: Object.keys(localThemeSettings).length > 0 || localLineOverrideCount > 0,
     phase: siteSync.phase,
