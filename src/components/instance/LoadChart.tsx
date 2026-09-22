@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import UplotReact from "uplot-react";
-import type uPlot from "uplot";
+import uPlot from "uplot";
 import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
 import { useLoadRecords } from "@/hooks/useRecords";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
@@ -27,8 +27,10 @@ import {
 import { ChartTooltip, SwitchToggle } from "./ChartParts";
 import {
   downsampleAligned,
+  appendLiveChartPoint,
   fillMissingMetricPoints,
   interpolateMetricGaps,
+  mergeHistoryWithLivePoints,
 } from "./chartData";
 import { formatByteRateLabel, formatBytes, formatTrafficRateLabel } from "@/utils/format";
 import { historyChartRangeSeconds, historyCoverageLabel } from "@/utils/historyRange";
@@ -38,8 +40,30 @@ import type { LoadRecord, NodeMetrics } from "@/types/cfsm";
 
 const LOAD_HISTORY_SAMPLE_LIMIT = 360;
 const LOAD_HISTORY_RENDER_LIMIT = 720;
-const REALTIME_HISTORY_SEED_LIMIT = 120;
+/**
+ * 「实时」档查 10 分钟档历史打底（后端认的最短档位），不再查整整一小时。
+ *
+ * 每个档位都会把实时样本接在历史后面之后（v1.2.18），「实时」要是还拿一小时打底，
+ * 它和「1 小时」画出来就是同一张图（站长 2026-09-21：「这个实时和 1 小时都是 1 小时的数据」）。
+ */
+const REALTIME_QUERY_HOURS = 0.167;
+/** 打底的行数上限：10 分钟按 30 秒一行约 20 行，留点余量给上报更密的探针。 */
+const REALTIME_HISTORY_SEED_LIMIT = 60;
+/**
+ * 「实时」档最多显示这么长的一段。按**时间**卡而不是只按条数：探针 60 秒才报一次时，
+ * 600 条就是 10 小时，那又变回「长区间」了。
+ */
+const REALTIME_WINDOW_SECONDS = 15 * 60;
 const REALTIME_SAMPLE_LIMIT = 600;
+/**
+ * 回到前台、且离开超过这么久就把历史重拉一次。
+ *
+ * 页面在后台满 30 秒会断开实时推送（见 wsStore 的后台暂停），这段时间的数据只在后端的历史里，
+ * 不补就是图上一个洞 —— 站长 2026-09-21 把面板切到后台去跑测速，回来后那一段峰值不在图上。
+ */
+const RESUME_REFETCH_HIDDEN_MS = 30_000;
+/** 兜底：在前台但这么久没收到实时样本（WS 掉了、实时连接到时限），同样重拉一次补上。 */
+const STALE_TAIL_REFETCH_MS = 5 * 60_000;
 
 const CPU_KEYS = ["cpu"];
 const CPU_COLORS = [CHART_PALETTE.cpu];
@@ -128,12 +152,6 @@ function downsamplePoints(points: ChartPoint[], limit: number) {
   });
 }
 
-function formatRangeSummary(hours: number) {
-  if (hours === 0) return "实时";
-  if (hours % 24 === 0) return `${hours / 24} 天`;
-  return `${hours} 小时`;
-}
-
 function getSeriesLabel(key: string) {
   return SERIES_LABELS[key] ?? key;
 }
@@ -188,6 +206,14 @@ function formatCountAxisValue(value: number, min: number, max: number) {
   if (span < 10) return value.toFixed(1);
   return `${Math.round(value)}`;
 }
+
+/**
+ * 负载图表用样条曲线，和后端内置主题一个观感（站长 2026-09-21 提的）。
+ *
+ * 样条在尖峰两侧会轻微过冲，非负指标（CPU/网速/连接数）因此可能画到 0 以下 ——
+ * uPlot 会把线裁在绘图区里，看着就是贴着底边，不会画出负值刻度。
+ */
+const SPLINE_PATHS = uPlot.paths.spline?.();
 
 // 不含尺寸的配置。width/height 由调用方在另一个 memo 里加上，resize 时只改这两个 key，
 // uplot-react 就会调 setSize() 而不是重建整个 chart。(用普通函数而非 hook——它不调任何
@@ -261,6 +287,7 @@ function buildBaseOptions({
         // 会独占填充色，看起来像它才是主角。
         fill: fillAllSeries || index === 0 ? `${colors[index] ?? colors[0]}22` : undefined,
         width: 1.6,
+        paths: SPLINE_PATHS,
         spanGaps: spanGaps ?? false,
         points: { show: false },
       })),
@@ -425,17 +452,21 @@ export function LoadChart({
   hours: number;
   active?: boolean;
 }) {
-  const queryHours = hours === 0 ? 1 : hours;
+  const queryHours = hours === 0 ? REALTIME_QUERY_HOURS : hours;
   const { data, isError, isFetching, isLoading, refetch } = useLoadRecords(
     uuid,
     queryHours,
     active,
   );
   const isRealtime = hours === 0;
-  const node = useNodeMetrics(uuid, isRealtime && active);
+  // 历史档也要实时值：历史只有打开时那一份，不接实时样本的话，页面开着的这段时间里
+  // 发生的事（比如跑一次测速）在图上根本不会出现（站长 2026-09-21 反馈，内置主题是接着画的）。
+  const node = useNodeMetrics(uuid, active);
   const meta = useNodeMeta(uuid);
   const { resolvedAppearance } = usePreferences();
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
+  /** 上一条实时样本的到达时刻，用来发现「断了一段」。 */
+  const lastSampleAtRef = useRef(0);
   const [connectNulls, setConnectNulls] = useState(false);
   const totalFallbacks = useMemo(
     () => ({
@@ -447,17 +478,42 @@ export function LoadChart({
   );
 
   useEffect(() => {
-    if (!active || !isRealtime || !node) return;
+    if (!active || !node) return;
+    const now = Date.now();
+    const sinceLast = lastSampleAtRef.current > 0 ? now - lastSampleAtRef.current : 0;
+    lastSampleAtRef.current = now;
+    // 断了很久才又收到样本：中间那段只有后端的历史里有，重拉一次把洞补上。
+    if (sinceLast >= STALE_TAIL_REFETCH_MS) void refetch();
     const point = pointFromNode(node);
-    setRealtimePoints((prev) => {
-      const last = prev[prev.length - 1];
-      if (last && Math.abs(last.time - point.time) < 1) return prev;
-      return [...prev, point].slice(-REALTIME_SAMPLE_LIMIT);
-    });
-  }, [active, isRealtime, node]);
+    // 实时档只看最近一段，超上限砍最老的；历史档要一直接到历史末尾，超上限改为抽稀（见 appendLiveChartPoint）。
+    setRealtimePoints((prev) =>
+      appendLiveChartPoint(prev, point, {
+        dense: isRealtime,
+        limit: isRealtime ? REALTIME_SAMPLE_LIMIT : undefined,
+      }),
+    );
+  }, [active, isRealtime, node, refetch]);
+
+  // 回到前台补历史：后台那段时间实时推送是断的，只靠实时样本接不回来。
+  useEffect(() => {
+    if (!active) return;
+    let hiddenSince = document.hidden ? Date.now() : 0;
+    const onVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenSince = Date.now();
+        return;
+      }
+      const awayMs = hiddenSince > 0 ? Date.now() - hiddenSince : 0;
+      hiddenSince = 0;
+      if (awayMs >= RESUME_REFETCH_HIDDEN_MS) void refetch();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [active, refetch]);
 
   useEffect(() => {
     setRealtimePoints([]);
+    lastSampleAtRef.current = 0;
   }, [hours, uuid]);
 
   const historyRecords = useMemo<Array<{ record: LoadRecord; time: number }>>(
@@ -494,27 +550,30 @@ export function LoadChart({
 
   const points = useMemo<ChartPoint[]>(() => {
     if (isRealtime) {
-      const initial = historyPoints.slice(-REALTIME_HISTORY_SEED_LIMIT);
-      const merged = [...initial, ...realtimePoints].sort((a, b) => a.time - b.time);
-      const deduped = merged.filter((point, index, arr) => {
-        const next = arr[index + 1];
-        return !next || Math.abs(next.time - point.time) >= 1;
-      });
-      return deduped.slice(-REALTIME_SAMPLE_LIMIT);
+      const seeded = mergeHistoryWithLivePoints(
+        historyPoints.slice(-REALTIME_HISTORY_SEED_LIMIT),
+        realtimePoints,
+      );
+      const newest = seeded[seeded.length - 1]?.time;
+      const windowed =
+        newest == null
+          ? seeded
+          : seeded.filter((point) => point.time >= newest - REALTIME_WINDOW_SECONDS);
+      return windowed.slice(-REALTIME_SAMPLE_LIMIT);
     }
-    return historyPoints;
+    // 历史档：历史那段以历史为准，实时样本只接在它后面。
+    return mergeHistoryWithLivePoints(historyPoints, realtimePoints);
   }, [historyPoints, isRealtime, realtimePoints]);
 
-  const rangeSummary = formatRangeSummary(hours);
   // API 各回退路径不保证返回顺序,最新值必须取自按时间排好序的 historyRecords。
   const latestHistoryRecord = historyRecords[historyRecords.length - 1]?.record;
   const latestHistoryTotals = latestHistoryRecord
     ? resolveLoadRecordTotals(latestHistoryRecord, totalFallbacks)
     : null;
-  // 磁盘 IO：实时档看当前上报，历史档看这段区间里有没有采到过。旧探针/旧后端不下发时
+  // 磁盘 IO：有实时值就用实时值，否则看这段区间里有没有采到过。旧探针/旧后端不下发时
   // 整段都是 null，此时磁盘卡片退回原来的已用空间图。
   const latestDiskIo = useMemo(() => {
-    if (isRealtime && node?.diskIo) {
+    if (node?.diskIo) {
       return { read: node.diskIo.read_bps, write: node.diskIo.write_bps };
     }
     if (latestHistoryRecord?.disk_read != null || latestHistoryRecord?.disk_write != null) {
@@ -524,13 +583,13 @@ export function LoadChart({
       };
     }
     return null;
-  }, [isRealtime, latestHistoryRecord, node?.diskIo]);
+  }, [latestHistoryRecord, node?.diskIo]);
   const hasDiskIo = useMemo(
     () => points.some((point) => point.diskRead != null || point.diskWrite != null),
     [points],
   );
   const diskUsageLabel =
-    isRealtime && node
+    node
       ? `${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`
       : latestHistoryRecord && latestHistoryTotals
         ? `${formatBytes(latestHistoryRecord.disk)} / ${formatBytes(latestHistoryTotals.diskTotal)}`
@@ -545,10 +604,16 @@ export function LoadChart({
   const coverageSummary = points.length
     ? `${formatChartCoverageTime(points[0].time)} - ${formatChartCoverageTime(points[points.length - 1].time)}`
     : "—";
-  const requestedXRange = useMemo(
-    () => (isRealtime ? null : historyChartRangeSeconds(data)),
-    [data, isRealtime],
-  );
+  const lastPointTime = points[points.length - 1]?.time;
+  const requestedXRange = useMemo(() => {
+    if (isRealtime) return null;
+    const range = historyChartRangeSeconds(data);
+    // 后端给的区间截止到取数那一刻；实时样本接上来之后要把右端跟着推，否则新的点画在坐标轴外面。
+    if (!range) return null;
+    return lastPointTime != null && lastPointTime > range[1]
+      ? ([range[0], lastPointTime] as [number, number])
+      : range;
+  }, [data, isRealtime, lastPointTime]);
   const coverageLabel = useMemo(
     () =>
       isRealtime
@@ -616,7 +681,6 @@ export function LoadChart({
             <RefreshCw size={14} aria-hidden />
             {isFetching ? "刷新中" : "刷新"}
           </button>
-          <span className="instance-chart-range-chip">{rangeSummary}</span>
         </div>
       }
       className="instance-chart-panel"
@@ -627,7 +691,7 @@ export function LoadChart({
           title="CPU"
           uuid={uuid}
           value={
-            isRealtime && node
+            node
               ? `${node.cpuPct.toFixed(2)}%`
               : `${(points[points.length - 1]?.cpu ?? 0).toFixed(2)}%`
           }
@@ -647,14 +711,14 @@ export function LoadChart({
           title="内存"
           uuid={uuid}
           value={
-            isRealtime && node
+            node
               ? `${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`
               : latestHistoryRecord && latestHistoryTotals
                 ? `${formatBytes(latestHistoryRecord.ram)} / ${formatBytes(latestHistoryTotals.ramTotal)}`
                 : "—"
           }
           note={
-            isRealtime && node
+            node
               ? node.swapTotal
                 ? `Swap ${formatBytes(node.swapUsed)} / ${formatBytes(node.swapTotal)}`
                 : "Swap 无"
@@ -720,7 +784,7 @@ export function LoadChart({
           title="网络"
           uuid={uuid}
           value={
-            isRealtime && node
+            node
               ? `${formatTrafficRateLabel(node.netDown)} / ${formatTrafficRateLabel(node.netUp)}`
               : latestHistoryRecord
                 ? `${formatTrafficRateLabel(latestHistoryRecord.net_in ?? 0)} / ${formatTrafficRateLabel(latestHistoryRecord.net_out ?? 0)}`
@@ -728,8 +792,8 @@ export function LoadChart({
           }
           note={
             <span className="instance-overview-multi">
-              <span className="inline-flex items-center gap-1"><ArrowDown size={11} />{isRealtime && node ? formatBytes(node.trafficDown) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_down ?? 0) : "—"}</span>
-              <span className="inline-flex items-center gap-1"><ArrowUp size={11} />{isRealtime && node ? formatBytes(node.trafficUp) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_up ?? 0) : "—"}</span>
+              <span className="inline-flex items-center gap-1"><ArrowDown size={11} />{node ? formatBytes(node.trafficDown) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_down ?? 0) : "—"}</span>
+              <span className="inline-flex items-center gap-1"><ArrowUp size={11} />{node ? formatBytes(node.trafficUp) : latestHistoryRecord ? formatBytes(latestHistoryRecord.net_total_up ?? 0) : "—"}</span>
             </span>
           }
           points={points}
@@ -747,7 +811,7 @@ export function LoadChart({
           title="连接数"
           uuid={uuid}
           value={
-            isRealtime && node
+            node
               ? `TCP ${node.connectionsTcp} / UDP ${node.connectionsUdp}`
               : latestHistoryRecord
                 ? `TCP ${Math.round(latestHistoryRecord.connections ?? 0)} / UDP ${Math.round(latestHistoryRecord.connections_udp ?? 0)}`
@@ -768,14 +832,14 @@ export function LoadChart({
           title="进程"
           uuid={uuid}
           value={
-            isRealtime && node
+            node
               ? node.process.toString()
               : latestHistoryRecord
                 ? Math.round(latestHistoryRecord.process ?? 0).toString()
                 : "—"
           }
           note={
-            isRealtime && node
+            node
               ? `负载 ${node.load1.toFixed(2)} | ${node.load5.toFixed(2)} | ${node.load15.toFixed(2)}`
               : latestHistoryRecord
                 ? `负载 ${(latestHistoryRecord.load ?? 0).toFixed(2)}`
