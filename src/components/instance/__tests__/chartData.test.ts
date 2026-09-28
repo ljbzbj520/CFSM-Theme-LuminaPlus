@@ -7,6 +7,7 @@ import {
   insertMetricGapSentinels,
   mergeHistoryWithLivePoints,
   type TimedMetricPoint,
+  resampleLiveTail,
 } from "@/components/instance/chartData";
 
 describe("fillMissingMetricPoints", () => {
@@ -309,5 +310,51 @@ describe("历史图接实时样本", () => {
   it("没有实时样本时原样返回历史", () => {
     const history = [point(0, 1)];
     expect(mergeHistoryWithLivePoints(history, [])).toBe(history);
+  });
+});
+
+describe("resampleLiveTail（历史档接实时样本按历史点距并格）", () => {
+  // 历史 60 秒一行（站长站点 1 小时档实测），实时样本 2 秒一个。
+  const history = Array.from({ length: 10 }, (_, index) => ({ time: 1_000 + index * 60, cpu: 1 }));
+  const lastHistory = history[history.length - 1]!.time;
+  const liveEvery2s = (seconds: number, cpu: (index: number) => number) =>
+    Array.from({ length: seconds / 2 }, (_, index) => ({ time: lastHistory + 2 + index * 2, cpu: cpu(index) }));
+
+  it("5 分钟的实时样本并成约 5 个点，最后一个落在最新样本的时刻", () => {
+    const live = liveEvery2s(300, () => 2);
+    const tail = resampleLiveTail(history, live, ["cpu"]);
+
+    expect(tail.length).toBeGreaterThanOrEqual(5);
+    expect(tail.length).toBeLessThanOrEqual(6);
+    expect(tail[tail.length - 1]!.time).toBe(live[live.length - 1]!.time);
+    for (let index = 1; index < tail.length; index += 1) {
+      expect(tail[index]!.time).toBeGreaterThan(tail[index - 1]!.time);
+    }
+    expect(tail.every((point) => point.cpu === 2)).toBe(true);
+  });
+
+  it("格子里有尖峰就留峰值，平稳就取均值", () => {
+    const live = liveEvery2s(120, (index) => (index === 5 ? 90 : index < 29 ? 1 : 3));
+    const [first, second] = resampleLiveTail(history, live, ["cpu"]);
+
+    expect(first!.cpu).toBe(90);
+    expect(second!.cpu).toBeCloseTo(3);
+  });
+
+  it("历史末尾之前的实时样本丢掉，只剩一个就原样返回", () => {
+    const live = [
+      { time: lastHistory - 10, cpu: 50 },
+      { time: lastHistory + 2, cpu: 4 },
+    ];
+    expect(resampleLiveTail(history, live, ["cpu"])).toEqual([{ time: lastHistory + 2, cpu: 4 }]);
+  });
+
+  it("全是 null 的指标（比如没有 Swap）并完还是 null", () => {
+    const live = liveEvery2s(60, () => 1).map((point) => ({ ...point, swap: null as number | null }));
+    const tail = resampleLiveTail<{ time: number; cpu: number; swap?: number | null }>(history, live, [
+      "cpu",
+      "swap",
+    ]);
+    expect(tail.every((point) => point.swap === null)).toBe(true);
   });
 });
