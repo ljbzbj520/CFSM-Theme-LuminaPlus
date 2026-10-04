@@ -27,6 +27,7 @@ import {
 } from "@/utils/metricTone";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
+import { recordReturnNode } from "@/utils/returnNode";
 import { MetricBar } from "./MetricBar";
 import { LatencyBars } from "./LatencyBars";
 import { QualityBars } from "./QualityBars";
@@ -206,6 +207,7 @@ function NodeCardHeader({
             to={`/server/${encodeURIComponent(node.uuid)}`}
             className="server-card-title-link"
             title={node.name}
+            onClick={() => recordReturnNode(node.uuid)}
           >
             {node.name}
           </Link>
@@ -227,6 +229,7 @@ function NodeCardHeader({
           className="server-card-detail-link"
           title={detailLabels.title}
           aria-label={detailLabels.ariaLabel}
+          onClick={() => recordReturnNode(node.uuid)}
         >
           <OsLogo value={node.os} size={15} />
         </Link>

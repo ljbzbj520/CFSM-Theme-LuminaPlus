@@ -37,6 +37,13 @@ import { useHourlyClock } from "@/hooks/useClock";
 import { usePacedRate } from "@/hooks/usePacedRate";
 import { preloadAssetsPage } from "@/services/assetsPageLoader";
 import { getLocalThemeSettings, saveLocalThemeSettings } from "@/services/themeSettingsStore";
+import {
+  getSavedHomeGroup,
+  getSavedHomeRegion,
+  saveHomeGroup,
+  saveHomeRegion,
+} from "@/utils/returnNode";
+import { useReturnNodeScroll } from "@/hooks/useReturnNodeScroll";
 import { HomeSortControl } from "./HomeSortControl";
 import {
   getOverviewRating,
@@ -334,8 +341,18 @@ export function NodeGrid() {
   const sortEnabled = themeSettings.isReady && themeSettings.enableHomeSort;
   const sortField = sortEnabled ? sort.field : themeSettings.homeSortField;
   const sortDirection = sortEnabled ? sort.direction : themeSettings.homeSortDirection;
-  const [selectedGroup, setSelectedGroup] = useState(HOME_ALL_GROUP);
-  const [selectedRegion, setSelectedRegion] = useState(HOME_ALL_REGION);
+  const [selectedGroup, setSelectedGroup] = useState(() => getSavedHomeGroup() ?? HOME_ALL_GROUP);
+  const [selectedRegion, setSelectedRegion] = useState(() => getSavedHomeRegion() ?? HOME_ALL_REGION);
+
+  const handleSelectGroup = useCallback((group: string) => {
+    setSelectedGroup(group);
+    saveHomeGroup(group);
+  }, []);
+
+  const handleSelectRegion = useCallback((region: string) => {
+    setSelectedRegion(region);
+    saveHomeRegion(region);
+  }, []);
   useHomepagePingOverview(mode);
 
   // 摘要不含名称，先从完整 meta 解析主题隐藏列表，再统一过滤各类数据。
@@ -483,8 +500,16 @@ export function NodeGrid() {
     if (defaultGroupApplied.current) return;
     if (!themeSettings.isReady || groupOptions.length === 0) return;
     defaultGroupApplied.current = true;
+    const saved = getSavedHomeGroup();
+    if (saved && groupOptions.includes(saved)) {
+      setSelectedGroup(saved);
+      return;
+    }
     const preset = themeSettings.homeDefaultGroup;
-    if (preset && groupOptions.includes(preset)) setSelectedGroup(preset);
+    if (preset && groupOptions.includes(preset)) {
+      setSelectedGroup(preset);
+      saveHomeGroup(preset);
+    }
   }, [groupOptions, themeSettings.homeDefaultGroup, themeSettings.isReady]);
 
   const groupFilteredNodes = useMemo(
@@ -534,9 +559,9 @@ export function NodeGrid() {
 
   useEffect(() => {
     if (selectedGroup !== HOME_ALL_GROUP && !groupOptions.includes(selectedGroup)) {
-      setSelectedGroup(HOME_ALL_GROUP);
+      handleSelectGroup(HOME_ALL_GROUP);
     }
-  }, [groupOptions, selectedGroup]);
+  }, [groupOptions, selectedGroup, handleSelectGroup]);
 
   // 选中的地区在当前分组里不存在了(切换分组/节点变化)就回到全部。
   useEffect(() => {
@@ -544,22 +569,22 @@ export function NodeGrid() {
       selectedRegion !== HOME_ALL_REGION &&
       !regionOptions.some((option) => option.code === selectedRegion)
     ) {
-      setSelectedRegion(HOME_ALL_REGION);
+      handleSelectRegion(HOME_ALL_REGION);
     }
-  }, [regionOptions, selectedRegion]);
+  }, [regionOptions, selectedRegion, handleSelectRegion]);
 
   // 地区栏被配置关闭(热更新)时,清掉可能残留的地区筛选,否则会留下一个不可见的过滤条件。
   useEffect(() => {
     if (!themeSettings.showRegionBar && selectedRegion !== HOME_ALL_REGION) {
-      setSelectedRegion(HOME_ALL_REGION);
+      handleSelectRegion(HOME_ALL_REGION);
     }
-  }, [themeSettings.showRegionBar, selectedRegion]);
+  }, [themeSettings.showRegionBar, selectedRegion, handleSelectRegion]);
 
   useEffect(() => {
     if (!themeSettings.showGroupTabs && selectedGroup !== HOME_ALL_GROUP) {
-      setSelectedGroup(HOME_ALL_GROUP);
+      handleSelectGroup(HOME_ALL_GROUP);
     }
-  }, [themeSettings.showGroupTabs, selectedGroup]);
+  }, [themeSettings.showGroupTabs, selectedGroup, handleSelectGroup]);
 
   // 卡片列表只随 UUID 集合/顺序变化；卡片内部各自订阅实时数据。
   const uuidsKey = useMemo(
@@ -570,13 +595,31 @@ export function NodeGrid() {
     () => (uuidsKey ? uuidsKey.split(UUID_KEY_SEPARATOR) : []),
     [uuidsKey],
   );
+
+  // 手机端/桌面端从详情页返回时，自动定位并滚动回刚才查看的节点卡片
+  useReturnNodeScroll({
+    isReady: themeSettings.isReady && storeHydrated,
+    nodes: visibleNodes,
+    orderedUuids,
+    selectedGroup,
+    onSelectGroup: handleSelectGroup,
+    selectedRegion,
+    onSelectRegion: handleSelectRegion,
+  });
+
   // 列表档由下方 NodeListView 渲染,这里不必构造卡片元素。
   const cards = useMemo(
     () =>
       mode === "list"
         ? null
         : orderedUuids.map((uuid) => (
-            <div key={uuid} className="min-w-0">
+            <div
+              key={uuid}
+              id={`node-${uuid}`}
+              data-node-uuid={uuid}
+              className="min-w-0"
+              style={{ scrollMarginTop: "24px", scrollMarginBottom: "24px" }}
+            >
               {mode === "mini" ? (
                 <MiniNodeCard
                   uuid={uuid}
@@ -702,7 +745,7 @@ export function NodeGrid() {
             <GroupTabs
               groups={groupOptions}
               selectedGroup={selectedGroup}
-              onSelectGroup={setSelectedGroup}
+              onSelectGroup={handleSelectGroup}
             />
           )}
           {showHomeSort && <HomeSortControl state={sort} />}
@@ -712,7 +755,7 @@ export function NodeGrid() {
         <RegionTabs
           regions={regionOptions}
           selectedRegion={selectedRegion}
-          onSelectRegion={setSelectedRegion}
+          onSelectRegion={handleSelectRegion}
           onReorder={handleRegionReorder}
         />
       )}

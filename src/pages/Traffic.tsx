@@ -8,6 +8,7 @@ import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { useTodayTrafficStats } from "@/hooks/useTodayTrafficStats";
 import { useVisibleNodes } from "@/hooks/useVisibleNodes";
 import { formatByteRateLabel, formatBytes } from "@/utils/format";
+import { recordReturnNode } from "@/utils/returnNode";
 import type { NodeInfo } from "@/types/cfsm";
 import type { TodayTrafficSample, TodayTrafficStat } from "@/utils/trafficStats";
 
@@ -271,12 +272,13 @@ export function Traffic() {
                   const samples = trafficQuery.data?.samplesByUuid[node.uuid] ?? [];
                   return (
                     <Fragment key={node.uuid}>
-                      <tr data-empty={!stat.hasSamples || undefined}>
+                      <tr id={`node-${node.uuid}`} data-empty={!stat.hasSamples || undefined}>
                         <td>
                           <Link
                             to={`/server/${encodeURIComponent(node.uuid)}`}
                             className="assets-node-link"
                             title={node.name}
+                            onClick={() => recordReturnNode(node.uuid)}
                           >
                             <Flag region={node.region} size={12} />
                             <span>{node.name}</span>
@@ -328,9 +330,13 @@ export function Traffic() {
               const detailId = `traffic-mobile-detail-${node.uuid}`;
               const samples = trafficQuery.data?.samplesByUuid[node.uuid] ?? [];
               return (
-                <article className="traffic-node-card" key={node.uuid} data-empty={!stat.hasSamples || undefined}>
+                <article id={`node-${node.uuid}`} className="traffic-node-card" key={node.uuid} data-empty={!stat.hasSamples || undefined}>
                   <header className="traffic-node-card-head">
-                    <Link to={`/server/${encodeURIComponent(node.uuid)}`} className="assets-node-link">
+                    <Link
+                      to={`/server/${encodeURIComponent(node.uuid)}`}
+                      className="assets-node-link"
+                      onClick={() => recordReturnNode(node.uuid)}
+                    >
                       <Flag region={node.region} size={12} />
                       <span>{node.name}</span>
                     </Link>

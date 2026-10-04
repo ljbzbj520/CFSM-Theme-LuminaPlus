@@ -14,6 +14,7 @@ import { LatencyBars } from "./LatencyBars";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
 import { formatOsLabel, joinTagTitle, nodeDetailLinkLabels } from "./nodeCardShared";
 import { formatHealthBucketTooltip } from "./pingBucketText";
+import { recordReturnNode } from "@/utils/returnNode";
 import type { PingOverviewTaskLoadState } from "@/types/cfsm";
 import { HOMEPAGE_PING_BUCKET_COUNT } from "@/hooks/usePingOverview";
 
@@ -282,9 +283,13 @@ const NodeRow = memo(function NodeRow({ uuid }: { uuid: string }) {
   return (
     <Link
       to={`/server/${encodeURIComponent(uuid)}`}
+      id={`node-${uuid}`}
+      data-node-uuid={uuid}
+      style={{ scrollMarginTop: "24px", scrollMarginBottom: "24px" }}
       className={clsx("node-list-row", isOffline && "is-offline")}
       title={detailLabels.title}
       aria-label={rowLabel}
+      onClick={() => recordReturnNode(uuid)}
     >
       <div className="node-list-cell node-list-node">
         <div className="node-list-node-text">

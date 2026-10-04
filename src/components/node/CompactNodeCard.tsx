@@ -18,6 +18,7 @@ import {
 import { clsx } from "clsx";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
+import { recordReturnNode } from "@/utils/returnNode";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
 import { HOMEPAGE_PING_BUCKET_COUNT } from "@/hooks/usePingOverview";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
@@ -368,6 +369,7 @@ function CompactNodeHeader({
             to={`/server/${encodeURIComponent(node.uuid)}`}
             className="compact-node-title"
             title={node.name}
+            onClick={() => recordReturnNode(node.uuid)}
           >
             {node.name}
           </Link>
@@ -379,6 +381,7 @@ function CompactNodeHeader({
           className="compact-node-detail-link"
           title={detailLabels.title}
           aria-label={detailLabels.ariaLabel}
+          onClick={() => recordReturnNode(node.uuid)}
         >
           <OsLogo value={node.os} size={15} />
         </Link>

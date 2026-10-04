@@ -1,7 +1,8 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import "uplot/dist/uPlot.min.css";
+import { recordReturnNode } from "@/utils/returnNode";
 import { InstanceDetails } from "@/components/instance/InstanceDetails";
 import { PingChart } from "@/components/instance/PingChart";
 import { LoadChart } from "@/components/instance/LoadChart";
@@ -49,12 +50,30 @@ function RangeSelector({
 
 export function Instance() {
   const { uuid } = useParams<{ uuid: string }>();
+  const navigate = useNavigate();
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const meta = useNodeMeta(uuid ?? "");
   const storeStatus = useNodeStoreStatus(Boolean(uuid));
   // 详情页只订阅这一台的实时推送（后端文档：详情页不要订阅全量再在前端过滤）。
   useRealtimeFocus(uuid);
+
+  useEffect(() => {
+    if (uuid) {
+      recordReturnNode(uuid);
+    }
+  }, [uuid]);
+
+  const handleBack = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      if (uuid) {
+        recordReturnNode(uuid);
+      }
+      navigate("/");
+    },
+    [navigate, uuid],
+  );
   const [chartType, setChartType] = useState<"load" | "ping">("ping");
   const [loadHours, setLoadHours] = useState(0);
   const [pingHours, setPingHours] = useState(DEFAULT_PING_HOURS);
@@ -118,7 +137,7 @@ export function Instance() {
         : null;
     return (
       <div className="flex flex-col gap-5 py-2">
-        <Link to="/" className="instance-page-back">
+        <Link to="/" onClick={handleBack} className="instance-page-back">
           <ChevronLeft size={14} />
           返回
         </Link>
@@ -142,6 +161,7 @@ export function Instance() {
     <div className="flex flex-col gap-5 py-2">
       <Link
         to="/"
+        onClick={handleBack}
         className="instance-page-back"
       >
         <ChevronLeft size={14} />

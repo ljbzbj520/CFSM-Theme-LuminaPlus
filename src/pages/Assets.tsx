@@ -20,6 +20,7 @@ import { getExpireDaysRemaining, LONG_TERM_EXPIRE_DAYS } from "@/utils/format";
 import {
   getRenewalReminders,
 } from "@/utils/renewalReminder";
+import { recordReturnNode } from "@/utils/returnNode";
 
 type AssetDetail = ReturnType<typeof calculateCostSummary>["details"][number];
 type AssetsSortField =
@@ -378,6 +379,7 @@ export function Assets() {
                       return (
                         <tr
                           key={detail.uuid}
+                          id={`node-${detail.uuid}`}
                           data-counted={detail.counted}
                           data-renewal-tone={renewalTone}
                         >
@@ -386,6 +388,7 @@ export function Assets() {
                             to={`/server/${encodeURIComponent(detail.uuid)}`}
                             className="assets-node-link"
                             title={detail.name}
+                            onClick={() => recordReturnNode(detail.uuid)}
                           >
                             <Flag region={detail.region} size={12} />
                             <span>{detail.name}</span>
@@ -457,6 +460,7 @@ export function Assets() {
                   return (
                     <div
                       key={detail.uuid}
+                      id={`node-${detail.uuid}`}
                       className="cost-summary-detail-item"
                       data-counted={detail.counted}
                       data-renewal-tone={renewalTone}
@@ -466,6 +470,7 @@ export function Assets() {
                         <Link
                           to={`/server/${encodeURIComponent(detail.uuid)}`}
                           className="cost-summary-detail-name"
+                          onClick={() => recordReturnNode(detail.uuid)}
                         >
                           <Flag region={detail.region} size={12} />
                           <span className="cost-summary-detail-title">{detail.name}</span>

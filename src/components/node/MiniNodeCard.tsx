@@ -14,6 +14,7 @@ import {
 import { clsx } from "clsx";
 import { Flag } from "@/components/ui/Flag";
 import { OsLogo } from "@/components/ui/OsLogo";
+import { recordReturnNode } from "@/utils/returnNode";
 import { IpStackBadges } from "./IpStackBadges";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
 import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
@@ -50,7 +51,12 @@ function MiniHeader({
   return (
     <header className="mini-node-header">
       <Flag region={node.region} size={14} />
-      <Link to={detailHref} className="mini-node-title" title={node.name}>
+      <Link
+        to={detailHref}
+        className="mini-node-title"
+        title={node.name}
+        onClick={() => recordReturnNode(node.uuid)}
+      >
         {node.name}
       </Link>
       <Link
@@ -58,6 +64,7 @@ function MiniHeader({
         className="mini-node-os"
         title={detailLabels.title}
         aria-label={detailLabels.ariaLabel}
+        onClick={() => recordReturnNode(node.uuid)}
       >
         <OsLogo value={node.os} size={14} />
       </Link>
