@@ -159,6 +159,11 @@ export const CfsmServerSchema = z
     agent_version: looseString.default(""),
     last_updated: looseNumber.default(0),
     timestamp: looseNumber.default(0),
+    /**
+     * 后端收到这台最近一次上报的时刻（后端自己的时钟）。不是后端字段：主题从 `latestReportUpdates[].reportTs` 和
+     * WS 消息的 `ts` 填进来，判在线用它（见 mappers 的 `isServerOnline`）。`last_updated` 是探针时钟打的样本时间。
+     */
+    report_timestamp: looseNumber.optional(),
     is_online: z.boolean().optional(),
   })
   .passthrough();
@@ -677,6 +682,8 @@ export interface PublicConfig {
   version: string;
   latestVersion: string;
   private_site: boolean;
+  /** 这次请求带的令牌后端认不认（`/api/config` 的 `authorization`）。登录态由它推导，见 `resolveMe`。 */
+  authorization: boolean;
   turnstile_enabled: boolean;
   turnstile_site_key: string;
   verified: boolean;

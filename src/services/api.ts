@@ -2,10 +2,13 @@ import { z } from "zod";
 import {
   CfsmServerSchema,
   HistoryRowSchema,
+  LatestReportUpdateSchema,
   ServersResponseSchema,
   SiteConfigSchema,
+  SysConfigSchema,
   type CfsmServer,
   type HistoryRow,
+  type LatestReportUpdate,
   type LoadRecordsResponse,
   type Me,
   type NodeInfo,
@@ -14,7 +17,7 @@ import {
   type PublicConfig,
   type SysConfig,
 } from "@/types/cfsm";
-import { getJwtToken } from "@/services/cfsm/config";
+import { getJwtToken, getPrimaryApiBase } from "@/services/cfsm/config";
 import {
   ApiRequestError,
   cfsmGet,
@@ -31,6 +34,7 @@ import {
   historyRowsToPingSamples,
   inferIntervalSeconds,
   toNodeInfo,
+  withReportTimestamp,
 } from "@/services/cfsm/mappers";
 import { seedMeasuredHistory } from "@/services/pingLiveStore";
 import { resolvePreferredAppearance } from "@/utils/themeSettings";
@@ -161,6 +165,7 @@ export async function getPublic(options?: RequestOptions): Promise<PublicConfig>
     version: config.version,
     latestVersion: config.last_workers_version,
     private_site: !config.is_public,
+    authorization: config.authorization,
     turnstile_enabled: config.turnstile_enabled,
     turnstile_site_key: config.turnstile_site_key,
     verified: config.verified,
@@ -195,16 +200,17 @@ export async function getPublic(options?: RequestOptions): Promise<PublicConfig>
  * CF-Server-Monitor 没有 `/api/me`：登录态由 `/api/config` 的 `authorization` 决定，
  * 令牌本身存在 localStorage 里由 `/admin` 登录时写入。
  */
-export async function getMe(options?: RequestOptions): Promise<Me> {
-  if (!getJwtToken()) {
-    return { logged_in: false, username: "", uuid: "" };
-  }
-  const config = await getSiteConfig(options);
-  return {
-    logged_in: config.authorization,
-    username: config.authorization ? "admin" : "",
-    uuid: "",
-  };
+const LOGGED_OUT: Me = { logged_in: false, username: "", uuid: "" };
+const LOGGED_IN: Me = { logged_in: true, username: "admin", uuid: "" };
+
+/**
+ * 从已经拿到的站点配置推导登录态，**不另发请求**（后端主题规范：`/api/config` 全程只查一次）。
+ * 原来 `["me"]` 自己再查一遍 config，每次窗口获得焦点还重查。没令牌直接算未登录；有令牌但 config 还没到，返回 undefined。
+ */
+export function resolveMe(config: Pick<PublicConfig, "authorization"> | undefined): Me | undefined {
+  if (!getJwtToken()) return LOGGED_OUT;
+  if (!config) return undefined;
+  return config.authorization ? LOGGED_IN : LOGGED_OUT;
 }
 
 /* ------------------------------------------------------------------ *
@@ -256,6 +262,16 @@ function emptyStats(): AggregatedStats {
   };
 }
 
+/** 各节点「后端收到最近一次上报的时刻」，取自快照的 `latestReportUpdates`；判在线用它（见 `isServerOnline`）。 */
+function reportTimestampsOf(updates: LatestReportUpdate[]): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const update of updates) {
+    const reportTs = Number(update.reportTs ?? 0);
+    if (reportTs > (out.get(update.serverId) ?? 0)) out.set(update.serverId, reportTs);
+  }
+  return out;
+}
+
 /**
  * 拉取全部后端的服务器列表并合并。多站部署下单站失败不阻塞其它站，
  * 但全部失败时抛出第一个错误，让上层进入错误态而不是渲染空列表。
@@ -283,12 +299,13 @@ export async function getServersSnapshot(
     succeeded += 1;
 
     const seen = new Set<string>();
+    const reportTimestamps = reportTimestampsOf(result.data.latestReportUpdates);
     for (const server of result.data.servers) {
       // 同一 ID 在多站同时出现时以第一个站为准，避免重复卡片。
       if (!server.id || seen.has(server.id) || baseByServerId.has(server.id)) continue;
       seen.add(server.id);
       baseByServerId.set(server.id, result.base);
-      servers.push(server);
+      servers.push(withReportTimestamp(server, reportTimestamps.get(server.id)));
     }
 
     for (const [region, count] of Object.entries(result.data.regionStats)) {
@@ -332,7 +349,56 @@ export async function getNodes(
     .sort((left, right) => left.weight - right.weight);
 }
 
-/** 单台服务器详情。带 `latestReportUpdates`，主题目前只用其中的服务器字段。 */
+/** `/api/server?id=` 的响应：服务器字段平铺在顶层，另带 `sysConfig`（和 `/api/servers` 里那份同构）。 */
+const SingleServerResponseSchema = z.unknown().transform((raw, ctx) => {
+  const server = CfsmServerSchema.safeParse(raw);
+  const extras = z
+    .object({
+      sysConfig: SysConfigSchema.default({}),
+      latestReportUpdates: z.array(LatestReportUpdateSchema).default([]),
+    })
+    .safeParse(raw);
+  if (!server.success || !extras.success) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "invalid /api/server response" });
+    return z.NEVER;
+  }
+  const reportTs = reportTimestampsOf(extras.data.latestReportUpdates).get(server.data.id);
+  return {
+    server: withReportTimestamp(server.data, reportTs),
+    sysConfig: extras.data.sysConfig,
+  };
+});
+
+/**
+ * 只取一台的快照：直接打开详情页时用（后端主题规范：详情页查 `/api/server?id=`，不要为一台拉全站的 `/api/servers`）。
+ *
+ * 形状和 {@link getServersSnapshot} 一样，节点表里只有这一台；响应自带 `sysConfig`，没有首页用的延迟窗口。
+ * 只给单后端部署用 —— 多后端不知道这台在哪个站，由调用方照旧拉全站。
+ */
+export async function getServerSnapshot(
+  serverId: string,
+  options?: Omit<RequestOptions, "base">,
+): Promise<ServersSnapshot> {
+  const base = getPrimaryApiBase();
+  const { server, sysConfig } = await cfsmGet(
+    `/api/server?${new URLSearchParams({ id: serverId })}`,
+    SingleServerResponseSchema,
+    { ...options, base },
+  );
+  const baseByServerId = new Map([[server.id, base]]);
+  rememberServerBases(baseByServerId);
+  return {
+    servers: [server],
+    baseByServerId,
+    sysConfig,
+    regionStats: {},
+    stats: emptyStats(),
+    partial: false,
+    failedBases: [],
+  };
+}
+
+/** 单台服务器详情。 */
 export async function getServerDetail(
   serverId: string,
   options?: RequestOptions,
@@ -431,7 +497,8 @@ async function fetchHistoryRows(
     signal: undefined,
   })
     .then((rows) => {
-      historyCache.set(key, { fetchedAt: Date.now(), rows });
+      // 空结果不缓存：新节点刚开始上报时点「刷新」要能马上拿到（见 useRecords 的 recordStaleTime）。
+      if (rows.length > 0) historyCache.set(key, { fetchedAt: Date.now(), rows });
       backfillPingBuffer(serverId, rows);
       return rows;
     })
@@ -442,101 +509,44 @@ async function fetchHistoryRows(
   return request;
 }
 
-/** 手动刷新首页延迟条时的并发上限：节点多的站点别一次把请求全打出去。 */
-const PING_HISTORY_REFRESH_CONCURRENCY = 4;
-/** 手动刷新只拉一小时：首页延迟条本来就只画一小时，多拉的行是白读。 */
-const PING_HISTORY_REFRESH_HOURS = 1;
-
-export interface PingHistoryRefreshResult {
-  requested: number;
-  succeeded: number;
-  failed: number;
+/** 详情页一个档位的原始历史行。负载图和 Ping 图共用这一份（后端主题规范：历史含 ping/loss 全部复用同一次查询）。 */
+export interface HistorySnapshot {
+  rows: HistoryRow[];
+  /** 取回来的时刻，换算成图表区间的右端。 */
+  fetchedAt: number;
 }
 
-/**
- * 手动刷新首页延迟条：逐台拉一小时历史回灌本地缓冲。
- *
- * **这是首页唯一允许发起 `/api/history/all` 的入口，且只能由用户点击触发。**
- * 自动轮询仍然禁止 —— 读行量差 60 倍：按线上实测（7 台、上报间隔 30/60 秒）点一次约 780 行，
- * 而每分钟自动拉一次是每小时 4.7 万行。后端对 1 小时档有 60 秒服务端缓存（响应带 `X-Cache`），
- * 连点几下不会真的重复读库。
- *
- * 效果等同于「把每台节点的详情页都点开一遍」：走的是同一个 `fetchHistoryRows` →
- * `backfillPingBuffer` 通道，不是另一套取数逻辑。
- *
- * 绕开前端那 20 秒缓存（`cache: false`）—— 用户按刷新就是想要新的，拿缓存糊弄没有意义。
- */
-export async function refreshPingHistory(
-  serverIds: readonly string[],
-  options?: RequestOptions,
-): Promise<PingHistoryRefreshResult> {
-  const ids = [...new Set(serverIds.filter((id) => typeof id === "string" && id.length > 0))];
-  if (ids.length === 0) return { requested: 0, succeeded: 0, failed: 0 };
-
-  let cursor = 0;
-  let succeeded = 0;
-  let failed = 0;
-
-  async function worker(): Promise<void> {
-    for (;;) {
-      const index = cursor;
-      cursor += 1;
-      const serverId = ids[index];
-      if (serverId === undefined) return;
-      try {
-        await fetchHistoryRows(serverId, PING_HISTORY_REFRESH_HOURS, {
-          ...options,
-          cache: false,
-        });
-        succeeded += 1;
-      } catch {
-        // 单台失败不该拖垮整批：某台节点历史查不到（刚加入、分区 id 没建好）时，
-        // 其余节点照常回灌。
-        failed += 1;
-      }
-    }
-  }
-
-  await Promise.all(
-    Array.from(
-      { length: Math.min(PING_HISTORY_REFRESH_CONCURRENCY, ids.length) },
-      () => worker(),
-    ),
-  );
-
-  return { requested: ids.length, succeeded, failed };
-}
-
-export async function getLoadRecords(
+export async function getHistorySnapshot(
   uuid: string,
   hours = 6,
   options?: RequestOptions,
-): Promise<LoadRecordsResponse> {
+): Promise<HistorySnapshot> {
   const rows = await fetchHistoryRows(uuid, hours, options);
+  return { rows, fetchedAt: Date.now() };
+}
+
+export function toLoadRecordsResponse(
+  { rows, fetchedAt }: HistorySnapshot,
+  uuid: string,
+  hours: number,
+): LoadRecordsResponse {
   const records = rows.map((row) => historyRowToLoadRecord(row, uuid));
   const times = records.map((record) => record.time);
-  const rangeEndMs = Date.now();
   return {
     count: records.length,
     records,
-    rangeStartMs: rangeEndMs - normalizeHistoryHours(hours) * 60 * 60 * 1000,
-    rangeEndMs,
+    rangeStartMs: fetchedAt - normalizeHistoryHours(hours) * 60 * 60 * 1000,
+    rangeEndMs: fetchedAt,
     intervalSeconds: inferIntervalSeconds(times),
   };
 }
 
-/**
- * Ping 历史。CF-Server-Monitor 的探测线路由后端固定（八条，见 CARRIER_TASKS），
- * 数据与负载共用同一张历史表，因此这里复用同一个请求形状。
- */
-export async function getPingRecords(
+export function toPingRecordsResponse(
+  { rows, fetchedAt }: HistorySnapshot,
   uuid: string,
-  hours = 6,
-  options?: RequestOptions,
-): Promise<PingRecordsResponse> {
-  const rows = await fetchHistoryRows(uuid, hours, options);
+  hours: number,
+): PingRecordsResponse {
   const records = historyRowsToPingRecords(rows, uuid);
-  const rangeEndMs = Date.now();
   const observed = new Set(records.map((record) => record.task_id));
   const tasks = carrierPingTasks().filter((task) => observed.has(task.id));
 
@@ -545,10 +555,26 @@ export async function getPingRecords(
     records,
     tasks: tasks.length > 0 ? tasks : carrierPingTasks(),
     intervalSeconds: inferIntervalSeconds(rows.map((row) => row.timestamp)),
-    rangeStartMs: rangeEndMs - normalizeHistoryHours(hours) * 60 * 60 * 1000,
-    rangeEndMs,
+    rangeStartMs: fetchedAt - normalizeHistoryHours(hours) * 60 * 60 * 1000,
+    rangeEndMs: fetchedAt,
     stats: buildPingStats(records, uuid),
   };
+}
+
+export async function getLoadRecords(
+  uuid: string,
+  hours = 6,
+  options?: RequestOptions,
+): Promise<LoadRecordsResponse> {
+  return toLoadRecordsResponse(await getHistorySnapshot(uuid, hours, options), uuid, hours);
+}
+
+export async function getPingRecords(
+  uuid: string,
+  hours = 6,
+  options?: RequestOptions,
+): Promise<PingRecordsResponse> {
+  return toPingRecordsResponse(await getHistorySnapshot(uuid, hours, options), uuid, hours);
 }
 
 function buildPingStats(
@@ -672,9 +698,9 @@ export async function getTodayTrafficEstimate(
 export function saveThemeSettings(): Promise<void> {
   return Promise.reject(
     new ApiRequestError(
-      "第三方主题不能写入后端设置，请在 /admin#admin 中修改",
+      "第三方主题不能写入后端设置，请在 /admin#/admin 中修改",
       403,
-      "/admin#admin",
+      "/admin#/admin",
     ),
   );
 }

@@ -280,22 +280,44 @@ export function normalizeTrafficCalcType(value: unknown): string {
 /**
  * `price` 为 `"0"` 或 `"-1"` 表示免费，空串表示未设置。
  *
- * `-1` 原样保留：那是站长显式标记的「免费」，卡片会显示「免费」而不是留空；
+ * `-1` 原样保留：那是站长显式标记的「免费」，卡片会显示「免费」而不是留空；**显式填的 `"0"` 也读成 -1**
+ * （后端主题规范两者同义；原来 `"0"` 和没填都读成 0，分不出来，只有长期节点才显示「免费」）。
  * 费用统计对 `price <= 0` 一视同仁，不受影响。其余负数按未设置处理。
  */
 export function parsePrice(value: unknown): number {
   const raw = String(value ?? "").trim();
   if (!raw) return 0;
-  const num = toNumber(raw.replace(/,/g, ""), 0);
-  if (num === -1) return -1;
+  const num = toNumber(raw.replace(/,/g, ""), Number.NaN);
+  if (!Number.isFinite(num)) return 0;
+  if (num === -1 || num === 0) return -1;
   if (num < 0) return 0;
   return num;
 }
 
+/**
+ * 在线 = 后端最近 5 分钟内收到过这台的上报。
+ *
+ * `report_timestamp`（后端收到上报的时刻）和样本时间 `last_updated` 哪个新用哪个。样本时间是探针按节点自己的时钟打的：
+ * 站长 2026-10-10 有一台时钟慢了 321 秒，数据每 2 秒在更新，只看样本时间却永远「超过 5 分钟没上报」，卡片一直显示掉线，
+ * 而内置主题（`report_timestamp ?? last_updated`）显示在线。
+ *
+ * 不照内置主题只认上报时刻：本主题的上报时刻会跨快照沿用（见 wsStore `performServersSync`），页面隐藏十分钟再回来，
+ * 快照里没带这台的上报时刻时，沿用的旧值会把样本时间明明很新的节点判成掉线。
+ */
 export function isServerOnline(server: CfsmServer, now = Date.now()): boolean {
   if (typeof server.is_online === "boolean") return server.is_online;
-  const lastUpdated = normalizeTimestamp(server.last_updated || server.timestamp);
-  return lastUpdated > 0 && now - lastUpdated < ONLINE_THRESHOLD_MS;
+  const lastSeen = Math.max(
+    normalizeTimestamp(server.report_timestamp ?? 0),
+    normalizeTimestamp(server.last_updated || server.timestamp),
+  );
+  return lastSeen > 0 && now - lastSeen < ONLINE_THRESHOLD_MS;
+}
+
+/** 把「后端收到上报的时刻」记到节点上；只往新的推，不拿旧值盖新值。 */
+export function withReportTimestamp(server: CfsmServer, reportTs: unknown): CfsmServer {
+  const next = normalizeTimestamp(toNumber(reportTs, 0));
+  if (next <= 0 || next <= normalizeTimestamp(server.report_timestamp ?? 0)) return server;
+  return { ...server, report_timestamp: next };
 }
 
 export function extractServerCarrierNames(server: CfsmServer): Partial<CarrierNames> | undefined {
@@ -551,6 +573,7 @@ export function mergeServerPatch(
   base: CfsmServer,
   patch: Record<string, unknown>,
   sampleTs?: number,
+  reportTs?: number,
 ): CfsmServer {
   const next: Record<string, unknown> = { ...base };
   let changed = false;
@@ -576,6 +599,13 @@ export function mergeServerPatch(
   if (ts > 0 && toNumber(next.last_updated, 0) !== ts) {
     next.last_updated = ts;
     next.timestamp = ts;
+    changed = true;
+  }
+
+  // 上报时刻单独记，判在线用它（见 isServerOnline）。
+  const report = normalizeTimestamp(reportTs ?? 0);
+  if (report > normalizeTimestamp(toNumber(next.report_timestamp, 0))) {
+    next.report_timestamp = report;
     changed = true;
   }
 

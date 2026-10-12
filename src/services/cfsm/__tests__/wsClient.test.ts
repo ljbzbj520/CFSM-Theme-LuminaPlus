@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { buildWsUrl, createWsConnection, type WsSample } from "@/services/cfsm/wsClient";
+import {
+  buildWsUrl,
+  createWsConnection,
+  RECONNECT_MAX_ATTEMPTS,
+  type WsSample,
+} from "@/services/cfsm/wsClient";
 
 class FakeSocket {
   static instances: FakeSocket[] = [];
@@ -85,6 +90,7 @@ describe("createWsConnection", () => {
 
     socket().emit({
       type: "batchUpdate",
+      ts: 900,
       updates: [
         { serverId: "node-a", samples: [{ ts: 1, data: { cpu: 10 } }] },
         { serverId: "node-b", samples: [{ ts: 2, payload: { cpu: 20 } }] },
@@ -93,10 +99,31 @@ describe("createWsConnection", () => {
     });
 
     expect(batches[0]).toEqual([
-      { serverId: "node-a", ts: 1, data: { cpu: 10 } },
-      { serverId: "node-b", ts: 2, data: { cpu: 20 } },
-      { serverId: "node-c", ts: 3, data: { cpu: 30 } },
+      { serverId: "node-a", ts: 1, reportTs: 900, data: { cpu: 10 } },
+      { serverId: "node-b", ts: 2, reportTs: 900, data: { cpu: 20 } },
+      { serverId: "node-c", ts: 3, reportTs: 900, data: { cpu: 30 } },
     ]);
+  });
+
+  it("carries the report time separately from the sample time", () => {
+    // 样本 ts 是探针时钟打的，可能慢好几分钟；判在线要用后端收到上报的时刻。
+    const { batches, socket } = connect(["node-a"]);
+    socket().open();
+
+    socket().emit({
+      type: "batchUpdate",
+      ts: 900,
+      updates: [{ serverId: "node-a", reportTs: 950, samples: [{ ts: 1, data: { cpu: 10 } }] }],
+    });
+    expect(batches[0]?.[0]?.reportTs).toBe(950);
+
+    // 消息和 update 都没带时间：用到达时刻。
+    const before = Date.now();
+    socket().emit({
+      type: "batchUpdate",
+      updates: [{ serverId: "node-a", samples: [{ ts: 2, data: { cpu: 11 } }] }],
+    });
+    expect(batches[1]?.[0]?.reportTs).toBeGreaterThanOrEqual(before);
   });
 
   it("ignores non-batchUpdate frames", () => {
@@ -154,6 +181,36 @@ describe("createWsConnection", () => {
     expect(FakeSocket.instances).toHaveLength(1);
     vi.advanceTimersByTime(1_000);
     expect(FakeSocket.instances).toHaveLength(2);
+  });
+
+  it("gives up after RECONNECT_MAX_ATTEMPTS failed reconnects, and starts counting again once it has connected", () => {
+    const { socket } = connect(["a"]);
+    socket().open();
+    socket().onclose?.({ code: 1006 });
+    // 每次重连都连不上：指数退避到 30 秒封顶，满 10 次停手。
+    for (let attempt = 0; attempt < RECONNECT_MAX_ATTEMPTS; attempt += 1) {
+      vi.advanceTimersByTime(30_000);
+      socket().onclose?.({ code: 1006 });
+    }
+    const afterGiveUp = FakeSocket.instances.length;
+    expect(afterGiveUp).toBe(1 + RECONNECT_MAX_ATTEMPTS);
+    vi.advanceTimersByTime(10 * 60_000);
+    expect(FakeSocket.instances).toHaveLength(afterGiveUp);
+  });
+
+  it("resets the attempt count after a successful reconnect", () => {
+    const { socket } = connect(["a"]);
+    socket().open();
+    for (let attempt = 0; attempt < RECONNECT_MAX_ATTEMPTS - 1; attempt += 1) {
+      socket().onclose?.({ code: 1006 });
+      vi.advanceTimersByTime(30_000);
+    }
+    // 这一次连上了：之后再断，仍然会接着重连。
+    socket().open();
+    const before = FakeSocket.instances.length;
+    socket().onclose?.({ code: 1006 });
+    vi.advanceTimersByTime(30_000);
+    expect(FakeSocket.instances).toHaveLength(before + 1);
   });
 
   it("stops retrying when the server rejects the subscription (1008)", () => {
