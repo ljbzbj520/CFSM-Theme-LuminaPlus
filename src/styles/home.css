@@ -1084,3 +1084,174 @@
   min-width: 22px;
   height: 22px;
 }
+
+/* 移动端顶部与总览全链路深度紧凑化 */
+@media (max-width: 640px) {
+  .home-dashboard {
+    padding-top: 18px;
+  }
+
+  .home-brand {
+    top: -12px;
+    height: 30px;
+  }
+
+  .home-brand-title {
+    font-size: 16px;
+    padding: 1px 12px 2px 0;
+  }
+
+  .home-overview {
+    gap: 6px;
+    margin-bottom: 8px;
+  }
+
+  .overview-card,
+  .home-overview.is-dense .overview-card {
+    min-height: 68px;
+    border-radius: 10px;
+    padding: 7px 9px;
+    gap: 3px;
+  }
+
+  .overview-card-head {
+    gap: 6px;
+  }
+
+  .overview-card-label,
+  .home-overview.is-dense .overview-card-label {
+    font-size: 9.5px;
+    letter-spacing: 0.08em;
+  }
+
+  .overview-card-action,
+  .home-overview.is-dense .overview-card-action {
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+  }
+
+  .overview-card-action svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .overview-card-main {
+    gap: 6px;
+  }
+
+  .overview-card-value,
+  .home-overview.is-dense .overview-card-value {
+    font-size: 18px;
+    gap: 3px;
+  }
+
+  .overview-card-unit,
+  .home-overview.is-dense .overview-card-unit {
+    font-size: 9.5px;
+  }
+
+  .overview-card[data-metric="online"] .overview-card-value,
+  .home-overview.is-dense .overview-card[data-metric="online"] .overview-card-value {
+    font-size: 16px;
+  }
+
+  .overview-card[data-metric="online"] .overview-card-unit,
+  .home-overview.is-dense .overview-card[data-metric="online"] .overview-card-unit {
+    font-size: 9.5px;
+  }
+
+  .overview-bar {
+    height: 4px;
+  }
+
+  .overview-blocks {
+    height: 5px;
+    gap: 1.5px;
+  }
+
+  .overview-card-footer {
+    gap: 4px;
+    margin-top: 2px;
+  }
+
+  .overview-card-sub {
+    font-size: 9.5px;
+    line-height: 1.15;
+  }
+
+  .overview-card-rating {
+    font-size: 9.5px;
+    max-width: 5em;
+    line-height: 1.15;
+  }
+
+  .overview-card-caption {
+    font-size: 9px;
+    line-height: 1.15;
+  }
+
+  .home-controls-bar {
+    margin-bottom: 7px !important;
+    gap: 6px;
+  }
+
+  .home-group-tabs {
+    padding: 2.5px;
+    border-radius: 9px;
+    gap: 3px;
+  }
+
+  .home-group-tabs button {
+    min-height: 25px;
+    padding: 0 7px;
+    font-size: 10.5px;
+    border-radius: 7px;
+  }
+
+  .home-sort-trigger {
+    height: 29px;
+    padding: 0 8px;
+    border-radius: 9px;
+    font-size: 10.5px;
+    gap: 4px;
+  }
+
+  .home-sort-trigger svg {
+    width: 12px;
+    height: 12px;
+  }
+
+  .home-region-bar {
+    margin-bottom: 8px;
+    padding: 5px 6px;
+    border-radius: 10px;
+  }
+
+  .home-region-chips {
+    gap: 4px;
+  }
+
+  .home-region-chip {
+    min-height: 23px;
+    padding: 0 5px;
+    border-radius: 6px;
+    font-size: 10px;
+    gap: 4px;
+  }
+
+  .home-region-chip img,
+  .home-region-chip [role="img"] {
+    width: 16px !important;
+    height: 11px !important;
+  }
+
+  .home-region-chip-count {
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    border-radius: 4px;
+    font-size: 9px;
+  }
+}
+

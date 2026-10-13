@@ -644,6 +644,31 @@ body::after {
   }
 }
 
+@media (max-width: 640px) {
+  .floating-controls {
+    top: -12px;
+  }
+
+  .floating-controls-row,
+  .floating-controls-actions,
+  .floating-controls .floating-controls-appearance {
+    gap: 6px;
+  }
+
+  .floating-controls-actions .control-button,
+  .floating-controls-trigger {
+    width: 30px;
+    min-width: 30px;
+    height: 30px;
+    flex-basis: 30px;
+  }
+
+  .floating-controls-trigger svg {
+    width: 14px;
+    height: 14px;
+  }
+}
+
 @media (max-width: 360px) {
   .floating-controls-row,
   .floating-controls-actions,
