@@ -200,6 +200,7 @@ describe("normalizeServerCarrierNames", () => {
         cu: "广州联通",
         node_1: "香港CN2",
       },
+      "node-empty": {},
     });
   });
 

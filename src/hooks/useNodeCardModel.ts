@@ -71,10 +71,13 @@ export function useNodeCardModel(
     homepageMultiPingTaskIds,
     serverCarrierNames,
   } = useThemeSettings();
-  const nodeCarrierNames = useMemo(
-    () => resolveCarrierNames(serverCarrierNames?.[uuid] ?? meta?.carrierNames, carrierNames),
-    [carrierNames, serverCarrierNames, uuid, meta?.carrierNames],
-  );
+  const nodeCarrierNames = useMemo(() => {
+    const custom = serverCarrierNames?.[uuid];
+    if (custom !== undefined) {
+      return resolveCarrierNames(custom, carrierNames);
+    }
+    return resolveCarrierNames(meta?.carrierNames, carrierNames);
+  }, [carrierNames, serverCarrierNames, uuid, meta?.carrierNames]);
   // 后端关掉「输出首页详细 ping/loss」时那三条线一条数据都没有，直接回退单线路，
   // 免得画出三条空线（口径见 useShowThreeNetDetails）。
   const showThreeNetDetails = useShowThreeNetDetails();

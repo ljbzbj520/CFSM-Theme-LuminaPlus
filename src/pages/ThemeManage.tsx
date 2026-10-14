@@ -1269,6 +1269,9 @@ export function ThemeManage() {
     [draft.serverCarrierNames],
   );
 
+  const migratedCarrierNamesRef = useRef(false);
+  const clearedCarrierNodeUuidsRef = useRef<Set<string>>(new Set());
+
   const patchServerCarrierName = useCallback(
     (uuid: string, key: CarrierKey, rawValue: string) => {
       editVersionRef.current += 1;
@@ -1279,14 +1282,14 @@ export function ThemeManage() {
 
         if (trimmed.length > 0) {
           currentEntry[key] = rawValue;
+          clearedCarrierNodeUuidsRef.current.delete(uuid);
         } else {
           delete currentEntry[key];
         }
 
-        if (Object.keys(currentEntry).length > 0) {
-          nextMap[uuid] = currentEntry;
-        } else {
-          delete nextMap[uuid];
+        nextMap[uuid] = currentEntry;
+        if (Object.keys(currentEntry).length === 0) {
+          clearedCarrierNodeUuidsRef.current.add(uuid);
         }
 
         return { ...prev, serverCarrierNames: nextMap };
@@ -1298,10 +1301,10 @@ export function ThemeManage() {
   const clearServerCarrierNames = useCallback(
     (uuid: string) => {
       editVersionRef.current += 1;
+      clearedCarrierNodeUuidsRef.current.add(uuid);
       setDraft((prev) => {
-        if (!prev.serverCarrierNames[uuid]) return prev;
         const nextMap = { ...prev.serverCarrierNames };
-        delete nextMap[uuid];
+        nextMap[uuid] = {};
         return { ...prev, serverCarrierNames: nextMap };
       });
     },
@@ -1312,16 +1315,24 @@ export function ThemeManage() {
     setExpandedCarrierNodeUuid((current) => (current === uuid ? null : uuid));
   }, []);
 
-  // 自动平滑迁移：若后端节点返回了历史自定义线路名（client.carrierNames），且主题设置中尚未单独配置过，
-  // 自动带入草稿，让用户在界面即刻可见并无缝自动保存至 theme_options。
+  // 自动平滑迁移：仅在首次拉取到 adminClients 且站长尚未在主题配置过逐节点线路名时做一次初始带入
   useEffect(() => {
     if (!adminClients || adminClients.length === 0) return;
+    if (migratedCarrierNamesRef.current) return;
+    migratedCarrierNamesRef.current = true;
+
+    // 若当前配置中已存在逐节点线路名称记录（说明已经在使用主题设置管理），绝不自动改写
+    if (Object.keys(sourceThemeSettings.serverCarrierNames ?? {}).length > 0) {
+      return;
+    }
+
     let hasChanges = false;
     setDraft((prev) => {
       let modified = false;
       const nextNames = { ...prev.serverCarrierNames };
       for (const client of adminClients) {
-        if (!nextNames[client.uuid] && client.carrierNames) {
+        if (clearedCarrierNodeUuidsRef.current.has(client.uuid)) continue;
+        if (nextNames[client.uuid] === undefined && client.carrierNames) {
           const validEntries: Partial<CarrierNames> = {};
           for (const key of CARRIER_KEYS) {
             const val = client.carrierNames[key];
@@ -1342,7 +1353,7 @@ export function ThemeManage() {
     if (hasChanges) {
       editVersionRef.current += 1;
     }
-  }, [adminClients]);
+  }, [adminClients, sourceThemeSettings.serverCarrierNames]);
 
   // 溢价表格里"当前剩余价值"仅供参考,用已保存的汇率源/忽略名单算(不用草稿里还没保存的
   // 编辑),口径与资产统计页完全一致(同一个 calculateCostSummary),但不叠加溢价本身。

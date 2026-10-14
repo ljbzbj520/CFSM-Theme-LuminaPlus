@@ -20,6 +20,20 @@ describe("设置页自动保存只存改过的项", () => {
     const source = resolved({ surfaceOpacity: 80 });
     expect(changedManagedSettings({ ...source } as ThemeSettings, source)).toEqual({});
   });
+
+  it("逐节点自定义线路名称清空后能正确输出变更，使显式默认状态能保存到后端", () => {
+    const source = resolved({
+      serverCarrierNames: { "node-1": { ct: "上海电信" } },
+    });
+    const draft = {
+      ...source,
+      serverCarrierNames: { "node-1": {} },
+    } as ThemeSettings;
+
+    expect(changedManagedSettings(draft, source)).toEqual({
+      serverCarrierNames: { "node-1": {} },
+    });
+  });
 });
 
 describe("设置变了时草稿按项合并（rebaseDraft）", () => {

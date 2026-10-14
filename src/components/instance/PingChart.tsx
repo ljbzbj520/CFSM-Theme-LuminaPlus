@@ -157,10 +157,13 @@ export function PingChart({
   const carrierNames = useCarrierNames();
   const { serverCarrierNames } = useThemeSettings();
   const nodeMeta = useNodeMeta(uuid);
-  const resolvedCarrierNames = useMemo(
-    () => resolveCarrierNames(serverCarrierNames?.[uuid] ?? nodeMeta?.carrierNames, carrierNames),
-    [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames],
-  );
+  const resolvedCarrierNames = useMemo(() => {
+    const custom = serverCarrierNames?.[uuid];
+    if (custom !== undefined) {
+      return resolveCarrierNames(custom, carrierNames);
+    }
+    return resolveCarrierNames(nodeMeta?.carrierNames, carrierNames);
+  }, [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames]);
   // API 顺序与后台任务权重一致，响应本身不一定包含可重排的权重。
   const tasks = useMemo(
     () =>

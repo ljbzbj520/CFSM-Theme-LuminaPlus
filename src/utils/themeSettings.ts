@@ -239,7 +239,6 @@ export function normalizeServerCarrierNames(
     }
 
     const entry: Partial<CarrierNames> = {};
-    let hasValidField = false;
 
     for (const key of CARRIER_KEYS) {
       const val = (rawNames as Record<string, unknown>)[key];
@@ -247,14 +246,13 @@ export function normalizeServerCarrierNames(
         const trimmed = val.trim();
         if (trimmed.length > 0) {
           entry[key] = trimmed;
-          hasValidField = true;
         }
       }
     }
 
-    if (hasValidField) {
-      result[uuid] = entry;
-    }
+    // 保留对象条目（即使 entry 为空对象 {}，也作为该节点显式恢复默认名称的声明），
+    // 避免删除后退回后端旧残留或触发平滑迁移死循环复活。
+    result[uuid] = entry;
   }
 
   return result;

@@ -109,10 +109,13 @@ function PingLineMenu({
   const available = useAvailablePingTaskIds(uuid);
   const carrierNames = useCarrierNames();
   const nodeMeta = useNodeMeta(uuid);
-  const effectiveCarrierNames = useMemo(
-    () => resolveCarrierNames(serverCarrierNames?.[uuid] ?? nodeMeta?.carrierNames, carrierNames),
-    [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames],
-  );
+  const effectiveCarrierNames = useMemo(() => {
+    const custom = serverCarrierNames?.[uuid];
+    if (custom !== undefined) {
+      return resolveCarrierNames(custom, carrierNames);
+    }
+    return resolveCarrierNames(nodeMeta?.carrierNames, carrierNames);
+  }, [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames]);
   // 这台节点的「默认」= 站点线路表 + 站长存到后端的逐节点换线；本机换的行相对它记，「恢复默认」也回到它。
   const nodeDefault = resolveNodePingLineTaskIds(
     homepageMultiPingTaskIds,
