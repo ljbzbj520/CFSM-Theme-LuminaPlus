@@ -1088,11 +1088,11 @@
 /* 移动端顶部与总览全链路深度紧凑化 */
 @media (max-width: 640px) {
   .home-dashboard {
-    padding-top: 18px;
+    padding-top: 28px;
   }
 
   .home-brand {
-    top: -12px;
+    top: -14px;
     height: 30px;
   }
 
@@ -1223,35 +1223,43 @@
   }
 
   .home-region-bar {
-    margin-bottom: 8px;
-    padding: 5px 6px;
-    border-radius: 10px;
+    margin-bottom: 9px;
+    padding: 6px 8px;
+    border-radius: 12px;
   }
 
   .home-region-chips {
-    gap: 4px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
   }
 
   .home-region-chip {
-    min-height: 23px;
-    padding: 0 5px;
-    border-radius: 6px;
-    font-size: 10px;
-    gap: 4px;
+    width: 100%;
+    min-height: 28px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 11.5px;
+    gap: 5px;
+    justify-content: center;
   }
 
   .home-region-chip img,
   .home-region-chip [role="img"] {
-    width: 16px !important;
-    height: 11px !important;
+    width: 20px !important;
+    height: 14px !important;
+  }
+
+  .home-region-chip-code {
+    font-size: 11px;
   }
 
   .home-region-chip-count {
-    min-width: 14px;
-    height: 14px;
-    padding: 0 3px;
-    border-radius: 4px;
-    font-size: 9px;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 5px;
+    font-size: 10px;
   }
 }
 

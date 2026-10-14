@@ -158,7 +158,7 @@ export function Instance() {
   }
 
   return (
-    <div className="flex flex-col gap-5 py-2">
+    <div className="instance-page-container flex flex-col gap-5 py-2">
       <Link
         to="/"
         onClick={handleBack}

@@ -65,16 +65,20 @@ function CompactGauge({
   icon,
   label,
   value,
+  actualUsage,
   detail,
   color,
   fraction,
+  metric,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  actualUsage?: string;
   detail?: string;
   color: string;
   fraction: number;
+  metric?: string;
 }) {
   // 单元素分段条:填充用一个 hard-stop 渐变到 fraction 处,再叠一个重复 mask 打出
   // 18 个段间空隙。替代了 18 个逐段 <span>(每卡 ×4 个 gauge)—— 那些 span 在每个
@@ -89,6 +93,7 @@ function CompactGauge({
     <div
       className="compact-node-gauge"
       style={style}
+      data-metric={metric}
       data-tip-open={detail && tip.open ? "true" : undefined}
       {...(detail ? tip.handlers : undefined)}
     >
@@ -98,7 +103,12 @@ function CompactGauge({
           {icon}
           <span>{label}</span>
         </span>
-        <strong className="tabular">{value}</strong>
+        <strong className="tabular">
+          {actualUsage && (
+            <span className="compact-node-gauge-actual">{actualUsage}</span>
+          )}
+          {value}
+        </strong>
       </div>
       <div className="compact-node-gauge-track" aria-hidden />
     </div>
@@ -437,6 +447,7 @@ function CompactNodeVitals({
   node: CompactNode;
   loadFraction: number;
 }) {
+  const ramDetail = `${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`;
   return (
     <div className="compact-node-vitals">
       <CompactGauge
@@ -446,14 +457,17 @@ function CompactNodeVitals({
         detail={`${node.cpuPct.toFixed(2)}% · ${node.cpu_cores || 0} 核`}
         fraction={node.cpuPct / 100}
         color="var(--progress-cpu)"
+        metric="cpu"
       />
       <CompactGauge
         icon={<MemoryStick size={12} />}
         label="内存"
         value={formatCompactPercent(node.ramPct)}
-        detail={`${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`}
+        actualUsage={ramDetail}
+        detail={ramDetail}
         fraction={node.ramPct / 100}
         color="var(--progress-memory)"
+        metric="ram"
       />
       <CompactGauge
         icon={<HardDrive size={12} />}
@@ -462,6 +476,7 @@ function CompactNodeVitals({
         detail={`${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`}
         fraction={node.diskPct / 100}
         color="var(--progress-disk)"
+        metric="disk"
       />
       <CompactGauge
         icon={<Gauge size={12} />}
@@ -470,6 +485,7 @@ function CompactNodeVitals({
         detail={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
         color="var(--progress-load)"
+        metric="load"
       />
     </div>
   );

@@ -646,7 +646,7 @@ body::after {
 
 @media (max-width: 640px) {
   .floating-controls {
-    top: -12px;
+    top: -14px;
   }
 
   .floating-controls-row,
@@ -2161,6 +2161,76 @@ body::after {
     gap: 6px;
   }
 
+}
+
+/* 手机端实例详情页上半部分精简紧凑化 */
+@media (max-width: 640px) {
+  .instance-page-container {
+    gap: 10px !important;
+  }
+
+  .instance-page-back {
+    font-size: 11.5px;
+    margin-bottom: -4px;
+    gap: 3px;
+  }
+
+  .instance-panel {
+    padding: 10px 11px;
+    border-radius: 12px;
+  }
+
+  .instance-panel-header {
+    margin-bottom: 7px;
+  }
+
+  .instance-panel-title {
+    font-size: 13.5px;
+  }
+
+  .instance-info-groups {
+    gap: 6px;
+  }
+
+  .instance-info-group {
+    padding: 6px 9px;
+    border-radius: 9px;
+  }
+
+  .instance-info-group-title {
+    font-size: 10.5px;
+    margin-bottom: 2px;
+  }
+
+  .instance-info-item {
+    padding: 2px 0;
+    gap: 8px;
+  }
+
+  .instance-info-label {
+    font-size: 10.5px;
+  }
+
+  .instance-info-value {
+    font-size: 10.5px;
+    line-height: 1.25;
+  }
+
+  .instance-info-item.is-stack .instance-info-label {
+    margin-bottom: 1px;
+  }
+
+  .instance-info-item.is-stack .instance-info-value {
+    margin-bottom: 3px;
+  }
+
+  .instance-info-traffic {
+    gap: 4px;
+  }
+
+  .instance-info-note {
+    font-size: 9.5px;
+  }
 }
 
 /* ------------------------------------------------------------------ *
