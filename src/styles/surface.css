@@ -2164,9 +2164,9 @@ body::after {
 }
 
 /* 手机端实例详情页上半部分精简紧凑化 */
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .instance-page-container {
-    gap: 10px !important;
+    gap: 8px !important;
   }
 
   .instance-page-back {
@@ -2176,43 +2176,43 @@ body::after {
   }
 
   .instance-panel {
-    padding: 10px 11px;
-    border-radius: 12px;
+    padding: 8px 10px;
+    border-radius: 11px;
   }
 
   .instance-panel-header {
-    margin-bottom: 7px;
+    margin-bottom: 6px;
   }
 
   .instance-panel-title {
-    font-size: 13.5px;
+    font-size: 13px;
   }
 
   .instance-info-groups {
-    gap: 6px;
+    gap: 5px;
   }
 
   .instance-info-group {
-    padding: 6px 9px;
-    border-radius: 9px;
+    padding: 5px 8px;
+    border-radius: 8px;
   }
 
   .instance-info-group-title {
-    font-size: 10.5px;
+    font-size: 10px;
     margin-bottom: 2px;
   }
 
   .instance-info-item {
-    padding: 2px 0;
-    gap: 8px;
+    padding: 1.5px 0;
+    gap: 6px;
   }
 
   .instance-info-label {
-    font-size: 10.5px;
+    font-size: 10px;
   }
 
   .instance-info-value {
-    font-size: 10.5px;
+    font-size: 10px;
     line-height: 1.25;
   }
 
@@ -2221,15 +2221,15 @@ body::after {
   }
 
   .instance-info-item.is-stack .instance-info-value {
-    margin-bottom: 3px;
+    margin-bottom: 2px;
   }
 
   .instance-info-traffic {
-    gap: 4px;
+    gap: 3px;
   }
 
   .instance-info-note {
-    font-size: 9.5px;
+    font-size: 9px;
   }
 }
 

@@ -757,7 +757,7 @@
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 720px) {
   .compact-node-card {
     padding: 10px 11px;
     gap: 6px;
@@ -804,7 +804,7 @@
   }
 
   .compact-node-vitals {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px 10px;
     padding-top: 6px;
   }
@@ -816,12 +816,21 @@
   }
 
   .compact-node-gauge {
+    min-width: 0;
     gap: 3px;
+  }
+
+  .compact-node-gauge-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
   }
 
   .compact-node-gauge-label {
     font-size: 10px;
-    gap: 4px;
+    gap: 3px;
+    flex-shrink: 0;
   }
 
   .compact-node-gauge-label svg {
@@ -830,17 +839,26 @@
   }
 
   .compact-node-gauge strong {
-    font-size: 11px;
+    font-size: 10.5px;
+    flex-shrink: 0;
+  }
+
+  .compact-node-gauge strong.tabular {
+    min-width: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 2px;
   }
 
   /* 手机端在内存占用百分比前显示实际占用 */
   .compact-node-gauge-actual {
     display: inline-block;
-    margin-right: 4px;
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 500;
     color: var(--text-tertiary);
-    letter-spacing: -0.01em;
+    letter-spacing: -0.02em;
+    flex-shrink: 1;
+    white-space: nowrap;
   }
 
   .compact-node-gauge-track {
