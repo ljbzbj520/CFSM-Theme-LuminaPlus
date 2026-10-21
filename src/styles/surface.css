@@ -1954,6 +1954,160 @@ body::after {
   margin-bottom: 12px;
 }
 
+/* Ping 图表纵坐标自定义量程面板 */
+.instance-yrange-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 65%, transparent);
+  background: color-mix(in srgb, var(--surface-sunken) 70%, var(--surface-elev) 30%);
+  animation: yrange-panel-in 150ms ease-out;
+}
+
+@keyframes yrange-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.instance-yrange-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.instance-yrange-title {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.instance-yrange-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.instance-yrange-chip {
+  padding: 3px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--surface-elev);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 140ms ease;
+}
+
+.instance-yrange-chip:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.instance-yrange-chip.is-active {
+  background: color-mix(in srgb, var(--progress-cpu) 15%, transparent);
+  border-color: color-mix(in srgb, var(--progress-cpu) 65%, transparent);
+  color: var(--progress-cpu);
+}
+
+.instance-yrange-inputs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.instance-yrange-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-elev);
+}
+
+.instance-yrange-field-desc {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.instance-yrange-input {
+  width: 58px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 0;
+  outline: none;
+  text-align: center;
+}
+
+.instance-yrange-input::-webkit-outer-spin-button,
+.instance-yrange-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.instance-yrange-unit {
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.instance-yrange-sep {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.instance-yrange-btn {
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 140ms ease;
+  border: 1px solid transparent;
+}
+
+.instance-yrange-btn.is-primary {
+  background: var(--progress-cpu);
+  color: #fff;
+}
+
+.instance-yrange-btn.is-primary:hover {
+  filter: brightness(1.1);
+}
+
+.instance-yrange-btn.is-reset {
+  background: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.instance-yrange-btn.is-reset:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.instance-yrange-tip {
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  line-height: 1.4;
+}
+
 .instance-ping-tasks {
   display: flex;
   flex-wrap: wrap;
@@ -2120,6 +2274,22 @@ body::after {
     justify-content: flex-start;
     overflow-x: auto;
     padding-bottom: 2px;
+  }
+
+  .instance-yrange-panel {
+    padding: 8px 10px;
+    gap: 7px;
+    margin-bottom: 10px;
+  }
+
+  .instance-yrange-chip {
+    padding: 2.5px 7px;
+    font-size: 10.5px;
+  }
+
+  .instance-yrange-input {
+    width: 48px;
+    font-size: 11.5px;
   }
 
   .instance-chart-meta {

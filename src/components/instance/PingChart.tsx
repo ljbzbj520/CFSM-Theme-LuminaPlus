@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
-import { Eye, EyeOff, RefreshCw } from "lucide-react";
+import { Eye, EyeOff, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
 import { useNodeMeta } from "@/hooks/useNode";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
@@ -116,6 +116,90 @@ const CHART_PADDING_RIGHT = 14;
 const SMOOTH_WINDOW_POINTS = 1;
 const SMOOTH_WINDOW_POINTS_PEAK = 13;
 
+const PING_YRANGE_STORAGE_KEY = "cfsm-luminaplus:ping-yrange";
+
+interface StoredYRange {
+  min: number | null;
+  max: number | null;
+}
+
+function readStoredYRange(): StoredYRange {
+  try {
+    const raw = window.localStorage.getItem(PING_YRANGE_STORAGE_KEY);
+    if (!raw) return { min: null, max: null };
+    const parsed = JSON.parse(raw);
+    return {
+      min:
+        typeof parsed.min === "number" && Number.isFinite(parsed.min) && parsed.min >= 0
+          ? parsed.min
+          : null,
+      max:
+        typeof parsed.max === "number" && Number.isFinite(parsed.max) && parsed.max > 0
+          ? parsed.max
+          : null,
+    };
+  } catch {
+    return { min: null, max: null };
+  }
+}
+
+function writeStoredYRange(range: StoredYRange): void {
+  try {
+    if (range.min == null && range.max == null) {
+      window.localStorage.removeItem(PING_YRANGE_STORAGE_KEY);
+    } else {
+      window.localStorage.setItem(PING_YRANGE_STORAGE_KEY, JSON.stringify(range));
+    }
+  } catch {
+    // 忽略 localStorage 不可用异常
+  }
+}
+
+export function resolvePingYRange({
+  autoMin,
+  autoMax,
+  customMin,
+  customMax,
+}: {
+  autoMin: number;
+  autoMax: number;
+  customMin?: number | null;
+  customMax?: number | null;
+}): [number, number] {
+  let min = autoMin;
+  let max = autoMax;
+  if (max === Number.NEGATIVE_INFINITY || max <= 0) max = 100;
+  if (min === Number.POSITIVE_INFINITY) min = 0;
+
+  const delta = max - min;
+  // 最小保护跨度：避免一条几乎完全无波动的线（如 125ms~126ms）被过度放大
+  const span = Math.max(15, delta);
+  // 上下留白缓冲（约占跨度的 15%），且至少留 3ms
+  const padding = Math.max(3, span * 0.15);
+
+  // 下限：如果 min 已经较低（<= 25ms），或减去 padding 后接近 0，则下限对齐到 0
+  let yMin = min - padding;
+  if (min <= 25 || yMin <= 0) {
+    yMin = 0;
+  } else {
+    // 规整到 5 的倍数，让刻度整齐
+    yMin = Math.max(0, Math.floor(yMin / 5) * 5);
+  }
+
+  // 上限：规整到 5 的倍数
+  let yMax = max + Math.max(5, padding);
+  yMax = Math.ceil(yMax / 5) * 5;
+
+  if (yMax <= yMin) yMax = yMin + 20;
+
+  // 手动范围优先覆盖：如果设置了最高值或最低值，使用手动设置
+  const finalMin = customMin != null ? Math.max(0, customMin) : yMin;
+  let finalMax = customMax != null ? Math.max(finalMin + 5, customMax) : yMax;
+  if (finalMax <= finalMin) finalMax = finalMin + 20;
+
+  return [finalMin, finalMax];
+}
+
 export function PingChart({
   uuid,
   hours,
@@ -140,6 +224,41 @@ export function PingChart({
   const [connectNulls, setConnectNulls] = useState(false);
   const [cutPeak, setCutPeak] = useState(false);
   const [showLoss, setShowLoss] = useState(true);
+  const [customYRange, setCustomYRange] = useState<StoredYRange>(() => readStoredYRange());
+  const [isYRangeOpen, setIsYRangeOpen] = useState(false);
+  const [minInput, setMinInput] = useState<string>(() =>
+    customYRange.min != null ? String(customYRange.min) : "",
+  );
+  const [maxInput, setMaxInput] = useState<string>(() =>
+    customYRange.max != null ? String(customYRange.max) : "",
+  );
+
+  const hasCustomYRange = customYRange.min != null || customYRange.max != null;
+
+  const applyRange = (min: number | null, max: number | null) => {
+    const next = { min, max };
+    setCustomYRange(next);
+    writeStoredYRange(next);
+    setMinInput(min != null ? String(min) : "");
+    setMaxInput(max != null ? String(max) : "");
+  };
+
+  const handleApplyCustom = () => {
+    const parsedMin = minInput.trim() !== "" ? Number(minInput.trim()) : null;
+    const parsedMax = maxInput.trim() !== "" ? Number(maxInput.trim()) : null;
+
+    const validMin =
+      parsedMin != null && Number.isFinite(parsedMin) && parsedMin >= 0 ? parsedMin : null;
+    let validMax =
+      parsedMax != null && Number.isFinite(parsedMax) && parsedMax > 0 ? parsedMax : null;
+
+    if (validMin != null && validMax != null && validMax <= validMin) {
+      validMax = validMin + 20;
+      setMaxInput(String(validMax));
+    }
+
+    applyRange(validMin, validMax);
+  };
   const [cursorLeft, setCursorLeft] = useState<number | null>(null);
   const chartRef = useRef<uPlot.AlignedData>([[]]);
   // tooltip 的 buildRows 只拿得到点位下标，丢包值走 ref 与图表数据同步。
@@ -360,7 +479,7 @@ export function PingChart({
   const panelDescription =
     [coverageLabel, samplingLabel].filter(Boolean).join(" · ") || undefined;
 
-  // 纵轴自适应动态量程：根据当前选中（可见）线路的延迟数据范围自动缩放纵轴，放大波动细节。
+  // 纵轴动态量程：支持用户手动选择最高值与最低值；未指定部分根据当前可见线路自适应计算。
   const yRange = useMemo<[number | null, number | null]>(() => {
     if (!chart) return [null, null];
     let min = Number.POSITIVE_INFINITY;
@@ -376,32 +495,14 @@ export function PingChart({
         }
       }
     }
-    if (max === Number.NEGATIVE_INFINITY || max <= 0) return [0, 100];
-    if (min === Number.POSITIVE_INFINITY) min = 0;
 
-    const delta = max - min;
-    // 最小保护跨度：避免一条几乎完全无波动的线（如 125ms~126ms）被过度放大
-    const span = Math.max(15, delta);
-    // 上下留白缓冲（约占跨度的 15%），且至少留 3ms
-    const padding = Math.max(3, span * 0.15);
-
-    // 下限：如果 min 已经较低（<= 25ms），或减去 padding 后接近 0，则下限对齐到 0
-    let yMin = min - padding;
-    if (min <= 25 || yMin <= 0) {
-      yMin = 0;
-    } else {
-      // 规整到 5 的倍数，让刻度整齐
-      yMin = Math.max(0, Math.floor(yMin / 5) * 5);
-    }
-
-    // 上限：规整到 5 的倍数
-    let yMax = max + Math.max(5, padding);
-    yMax = Math.ceil(yMax / 5) * 5;
-
-    if (yMax <= yMin) yMax = yMin + 20;
-
-    return [yMin, yMax];
-  }, [chart, tasks, visibleTaskIds]);
+    return resolvePingYRange({
+      autoMin: min,
+      autoMax: max,
+      customMin: customYRange.min,
+      customMax: customYRange.max,
+    });
+  }, [chart, customYRange.max, customYRange.min, tasks, visibleTaskIds]);
 
   const baseOptions = useMemo<Omit<uPlot.Options, "width" | "height"> | null>(() => {
     if (!chart) return null;
@@ -638,6 +739,18 @@ export function PingChart({
           onToggle={() => setConnectNulls((value) => !value)}
           title="关闭：如实显示中断/丢包断点；开启：跨过所有空缺连成完整曲线（更好看，但看不出掉线）。注：偶尔漏一两次采样的小空缺始终自动桥接，不受此开关影响。"
         />
+        <button
+          type="button"
+          className="instance-toggle-button"
+          data-active={hasCustomYRange ? "true" : isYRangeOpen ? "true" : "false"}
+          onClick={() => setIsYRangeOpen((prev) => !prev)}
+          title="手动设置纵坐标最高值和最低值，防止突发尖峰压扁曲线"
+        >
+          <SlidersHorizontal size={14} aria-hidden />
+          {hasCustomYRange
+            ? `量程: ${customYRange.min ?? 0}~${customYRange.max ?? "自动"}ms`
+            : "纵轴量程"}
+        </button>
         <button type="button" className="instance-toggle-button" onClick={toggleAll}>
           {hiddenTasks.size === 0 ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
           {hiddenTasks.size === 0 ? "隐藏全部" : "显示全部"}
@@ -653,6 +766,86 @@ export function PingChart({
           {isFetching ? "刷新中" : isError ? "刷新失败，重试" : "刷新"}
         </button>
       </div>
+
+      {isYRangeOpen && (
+        <div className="instance-yrange-panel">
+          <div className="instance-yrange-row">
+            <span className="instance-yrange-title">快速上限：</span>
+            <div className="instance-yrange-presets">
+              <button
+                type="button"
+                className={`instance-yrange-chip ${!hasCustomYRange ? "is-active" : ""}`}
+                onClick={() => applyRange(null, null)}
+              >
+                自动
+              </button>
+              {[30, 50, 100, 150, 200, 300, 500].map((presetMax) => {
+                const active = customYRange.min === 0 && customYRange.max === presetMax;
+                return (
+                  <button
+                    key={presetMax}
+                    type="button"
+                    className={`instance-yrange-chip ${active ? "is-active" : ""}`}
+                    onClick={() => applyRange(0, presetMax)}
+                  >
+                    {presetMax} ms
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="instance-yrange-row instance-yrange-custom-row">
+            <span className="instance-yrange-title">精确范围：</span>
+            <div className="instance-yrange-inputs">
+              <label className="instance-yrange-field">
+                <span className="instance-yrange-field-desc">最低</span>
+                <input
+                  type="number"
+                  min={0}
+                  placeholder="0 (自动)"
+                  value={minInput}
+                  onChange={(e) => setMinInput(e.target.value)}
+                  className="instance-yrange-input"
+                />
+                <span className="instance-yrange-unit">ms</span>
+              </label>
+              <span className="instance-yrange-sep">至</span>
+              <label className="instance-yrange-field">
+                <span className="instance-yrange-field-desc">最高</span>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="自动"
+                  value={maxInput}
+                  onChange={(e) => setMaxInput(e.target.value)}
+                  className="instance-yrange-input"
+                />
+                <span className="instance-yrange-unit">ms</span>
+              </label>
+              <button
+                type="button"
+                className="instance-yrange-btn is-primary"
+                onClick={handleApplyCustom}
+              >
+                确定
+              </button>
+              {hasCustomYRange && (
+                <button
+                  type="button"
+                  className="instance-yrange-btn is-reset"
+                  onClick={() => applyRange(null, null)}
+                >
+                  恢复自动
+                </button>
+              )}
+            </div>
+          </div>
+          <p className="instance-yrange-tip">
+            💡 手动限制最高值（如 100 ms）后，超出上限的高毛刺将被顶部截断，日常 30~50 ms 的轻微波动将被放大展示。
+          </p>
+        </div>
+      )}
 
       <div className="instance-ping-tasks">
         {taskStats.map((task) => {
