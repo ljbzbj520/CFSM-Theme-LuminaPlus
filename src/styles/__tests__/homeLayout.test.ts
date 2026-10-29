@@ -36,6 +36,11 @@ describe("home responsive layout contracts", () => {
     expect(surfaceCss).toMatch(/padding-right:\s*max\(var\(--app-gutter\)/);
   });
 
+  it("locks top padding in normal browser mode and limits safe-area-inset-top to standalone/fullscreen", () => {
+    expect(surfaceCss).toMatch(/\.app-main\s*\{[\s\S]*?padding-top:\s*1\.25rem;/);
+    expect(surfaceCss).toContain("@media (display-mode: standalone), (display-mode: fullscreen)");
+  });
+
   it("enforces the mini card width floor before adding another fixed column", () => {
     expect(homeCss).toContain("minmax(var(--mini-card-min-width, 260px), 1fr)");
     for (const breakpoint of [1440, 1150, 860, 580]) {

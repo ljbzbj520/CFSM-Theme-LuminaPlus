@@ -235,12 +235,20 @@ body::after {
   }
 }
 
-/* 普通页面只处理页面边距与 iOS PWA 安全区，不为首页专属悬浮卡留空。 */
+/* 普通页面只处理页面边距；普通浏览器模式下固定顶距，避免不同 Android/第三方浏览器
+   误将系统状态栏高度计入 env(safe-area-inset-top) 造成顶部巨大留白；
+   仅在独立 PWA / 全屏模式 (standalone / fullscreen) 下才追加状态栏安全区。 */
 .app-main {
   --app-gutter: 0.75rem;
   padding-left: max(var(--app-gutter), env(safe-area-inset-left, 0px));
   padding-right: max(var(--app-gutter), env(safe-area-inset-right, 0px));
-  padding-top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
+  padding-top: 1.25rem;
+}
+
+@media (display-mode: standalone), (display-mode: fullscreen) {
+  .app-main {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1.25rem);
+  }
 }
 
 .floating-controls {
@@ -636,11 +644,17 @@ body::after {
 @media (min-width: 1024px) {
   .app-main {
     --app-gutter: 2rem;
-    padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
+    padding-top: 1.5rem;
   }
 
   .floating-controls {
     top: -18px;
+  }
+}
+
+@media (min-width: 1024px) and ((display-mode: standalone) or (display-mode: fullscreen)) {
+  .app-main {
+    padding-top: calc(env(safe-area-inset-top, 0px) + 1.5rem);
   }
 }
 
