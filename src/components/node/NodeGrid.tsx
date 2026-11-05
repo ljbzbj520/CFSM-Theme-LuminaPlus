@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { t } from "@/i18n";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { CircleDollarSign } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
+import { useDragReorder } from "@/hooks/useDragReorder";
 import {
   useAllNodeMeta,
   useHomeNodeSummaries,
@@ -98,7 +100,7 @@ function formatCompactBytes(value: number): string {
 // 站点铭牌由 CSS 放进 AppShell 顶部留白，不占概览卡内容流。
 function HomeBrand({ siteName }: { siteName: string }) {
   return (
-    <header className="home-brand" aria-label="站点名称">
+    <header className="home-brand" aria-label={t("home.siteNameLabel")}>
       <h1 className="home-brand-title" title={siteName}>
         {siteName}
       </h1>
@@ -152,7 +154,7 @@ function HomeOverviewCards({
   const remainingValue = costSummary
     ? formatCnyMoney(costSummary.remainingCny)
     : costLoading
-      ? "计算中"
+      ? t("home.assetsCalculating")
       : "—";
   const trafficDetailLabel = `↑ ${formatBytes(overview.trafficUp)} · ↓ ${formatBytes(overview.trafficDown)}`;
   const trafficCompactLabel = `↑${formatCompactBytes(overview.trafficUp)} ↓${formatCompactBytes(overview.trafficDown)}`;
@@ -195,10 +197,10 @@ function HomeOverviewCards({
     <section
       className={`home-overview${dense ? " is-dense" : ""}`}
       data-cards={showAssetCard ? 4 : 3}
-      aria-label="首页总览"
+      aria-label={t("home.overviewLabel")}
     >
       <article className="overview-card" data-metric="online">
-        <span className="overview-card-label">在线节点</span>
+        <span className="overview-card-label">{t("home.onlineNodes")}</span>
         <div className="overview-card-main">
           <p className="overview-card-value">
             {overview.onlineNodes}
@@ -228,7 +230,7 @@ function HomeOverviewCards({
       </article>
 
       <article className="overview-card" data-metric="bandwidth">
-        <span className="overview-card-label">实时带宽</span>
+        <span className="overview-card-label">{t("home.liveBandwidth")}</span>
         <div className="overview-card-main">
           <p
             className="overview-card-value"
@@ -249,7 +251,7 @@ function HomeOverviewCards({
 
       <article className="overview-card" data-metric="traffic">
         <div className="overview-card-head">
-          <span className="overview-card-label">累计流量</span>
+          <span className="overview-card-label">{t("home.totalTraffic")}</span>
         </div>
         <div className="overview-card-main">
           <p className="overview-card-value">
@@ -269,7 +271,7 @@ function HomeOverviewCards({
       {showAssetCard && (
       <article className="overview-card" data-metric="asset">
         <div className="overview-card-head">
-          <span className="overview-card-label">资产概览</span>
+          <span className="overview-card-label">{t("home.assets")}</span>
           {/* 提醒天数设成 0 时这个组件没有提醒可显示，会退成资产页入口图标。 */}
           {showDetailButton && (
             <RenewalReminder nodes={renewalNodes} warningDays={renewalReminderDays} />
@@ -280,7 +282,7 @@ function HomeOverviewCards({
         </div>
         <div className="overview-card-footer">
           <p className="overview-card-caption">
-            {costRatesMissing ? "汇率获取失败 · 仅统计人民币" : "实时汇率计算"}
+            {costRatesMissing ? t("home.ratesFailed") : t("home.ratesLive")}
           </p>
           {renderRating(assetRating)}
         </div>
@@ -290,32 +292,118 @@ function HomeOverviewCards({
   );
 }
 
+/**
+ * 分组栏伸展开时的样式：占满整行、宽度按内容，右边给排序按钮（同一行、钉在最后一列右侧）留出它自己的宽度和一道间距。
+ * 不按「伸到倒数第二列」算：排序按钮只有几十像素宽，却占着一整列，两列时右边会空出一大块。
+ */
+function groupTabsSpanStyle(reservePx: number): CSSProperties {
+  return {
+    gridColumn: "1 / -1",
+    gridRow: "1",
+    justifySelf: "start",
+    width: "max-content",
+    maxWidth: reservePx > 0 ? `calc(100% - ${Math.ceil(reservePx)}px)` : "100%",
+  };
+}
+
 function GroupTabs({
   groups,
   selectedGroup,
   onSelectGroup,
+  onReorder,
+  hasSort,
 }: {
   groups: string[];
   selectedGroup: string;
   onSelectGroup: (group: string) => void;
+  onReorder: (groups: string[]) => void;
+  hasSort: boolean;
 }) {
+  // 和地区栏一样可以直接拖动排序（「全部」固定在最前，不参与）。
+  const { containerRef, order, draggingCode, itemRef, itemHandlers, shouldIgnoreClick } =
+    useDragReorder({ codes: groups, onReorder, axis: "x" });
+  const [spanStyle, setSpanStyle] = useState<CSSProperties | undefined>(undefined);
+
+  // 分组栏平时占一张卡的宽度、和第一张卡左右对齐；分组多到这一格放不下时，往右伸到排序按钮前为止
+  // （issue #10：原来只能在一格里横向滚动，右边空着）。伸到头还放不下就照旧横向滚动，不换行（站长定）。
+  // 手机上控件栏不是网格（≤ 768px 是 flex），保持横向滑动。
+  useLayoutEffect(() => {
+    const bar = containerRef.current;
+    const grid = bar?.parentElement;
+    if (!bar || !grid) return;
+    const measure = () => {
+      const gridStyle = getComputedStyle(grid);
+      const columns =
+        gridStyle.display === "grid"
+          ? gridStyle.gridTemplateColumns.split(" ").map(Number.parseFloat).filter(Number.isFinite)
+          : [];
+      if (columns.length < 2) {
+        delete grid.dataset.groupsSpan;
+        setSpanStyle(undefined);
+        return;
+      }
+      // 不受当前是否伸展影响地量出「把分组全部摆开要多宽」：临时按内容定宽量一下再还原（同一帧内，不会闪）。
+      // 伸展时行内带着 max-width: 100%，量的时候也要去掉，不然量到的是被它截过的宽度、来回判断（实测会在两态间跳）。
+      const { width: previousWidth, maxWidth: previousMaxWidth } = bar.style;
+      bar.style.width = "max-content";
+      bar.style.maxWidth = "none";
+      const needed = bar.getBoundingClientRect().width;
+      bar.style.width = previousWidth;
+      bar.style.maxWidth = previousMaxWidth;
+      const fits = needed <= columns[0]! + 0.5;
+      // 伸展时排序按钮要和分组栏同一行（见 home.css 的 data-groups-span），它原本靠自动排位落在第一行。
+      if (fits) delete grid.dataset.groupsSpan;
+      else grid.dataset.groupsSpan = "true";
+      const sort = hasSort ? grid.querySelector<HTMLElement>(".home-sort") : null;
+      const reserve = sort
+        ? sort.getBoundingClientRect().width + (Number.parseFloat(gridStyle.columnGap) || 0)
+        : 0;
+      setSpanStyle((current) => {
+        if (fits) return undefined;
+        const next = groupTabsSpanStyle(reserve);
+        return current?.maxWidth === next.maxWidth ? current : next;
+      });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(grid);
+    return () => {
+      observer.disconnect();
+      delete grid.dataset.groupsSpan;
+    };
+  }, [containerRef, groups, hasSort]);
+
   return (
-    <div className="home-group-tabs" role="group" aria-label="节点分组">
+    <div
+      ref={containerRef}
+      className="home-group-tabs"
+      role="group"
+      aria-label={t("home.groupsLabel")}
+      style={spanStyle}
+      data-reordering={draggingCode ? "true" : undefined}
+    >
       <button
         type="button"
         aria-pressed={selectedGroup === HOME_ALL_GROUP}
         data-active={selectedGroup === HOME_ALL_GROUP ? "true" : "false"}
         onClick={() => onSelectGroup(HOME_ALL_GROUP)}
       >
-        全部
+        {t("common.all")}
       </button>
-      {groups.map((group) => (
+      {order.map((group) => (
         <button
           key={group}
+          ref={itemRef(group)}
           type="button"
+          className="home-group-tab-draggable"
           aria-pressed={selectedGroup === group}
           data-active={selectedGroup === group ? "true" : "false"}
-          onClick={() => onSelectGroup(group)}
+          data-dragging={draggingCode === group ? "true" : undefined}
+          {...itemHandlers(group)}
+          onClick={() => {
+            if (shouldIgnoreClick()) return;
+            onSelectGroup(group);
+          }}
           title={group}
         >
           {group}
@@ -333,7 +421,7 @@ export function NodeGrid() {
   const { hydrated: storeHydrated, nodeInfoError } = useNodeStoreStatus();
   const { data: me } = useAuth();
   const { data: publicConfig } = usePublicConfig();
-  const siteName = publicConfig?.sitename?.trim() || "节点概览";
+  const siteName = publicConfig?.sitename?.trim() || t("home.defaultSiteName");
   const themeSettings = useThemeSettings();
   const { mode } = useViewMode();
   const sort = useHomeSort();
@@ -492,6 +580,18 @@ export function NodeGrid() {
         themeSettings.isReady ? themeSettings.homeGroupOrder : [],
       ),
     [visibleNodes, themeSettings.homeGroupOrder, themeSettings.isReady],
+  );
+  // 分组栏上拖完的顺序直接写本机设置，和地区栏同一条路（访客只影响自己，登录站长自动同步到后端）。
+  // 存过、但现在没有节点的分组也留着原位置（mergeHomeRegionOrder 只是按「显示的那几个」回填，分组同样适用）。
+  const handleGroupReorder = useCallback(
+    (visibleAfter: string[]) => {
+      const previous = themeSettings.isReady ? themeSettings.homeGroupOrder : [];
+      saveLocalThemeSettings({
+        ...getLocalThemeSettings(),
+        homeGroupOrder: mergeHomeRegionOrder(previous, groupOptions, visibleAfter),
+      });
+    },
+    [groupOptions, themeSettings.homeGroupOrder, themeSettings.isReady],
   );
   // 站长设的默认分组只在首屏套一次：后面访客自己点了哪组就是哪组，配置回流不该把人拽回去。
   // 后端没有这个分组（改名 / 删了）时留在「全部」。
@@ -676,8 +776,8 @@ export function NodeGrid() {
         className="flex h-[40vh] flex-col items-center justify-center gap-2 text-[var(--text-tertiary)]"
         aria-live="polite"
       >
-        <span className="text-[14px]">节点数据暂时无法加载</span>
-        <span className="text-[12px]">正在等待后端自动重试</span>
+        <span className="text-[14px]">{t("home.loadFailed")}</span>
+        <span className="text-[12px]">{t("home.loadRetrying")}</span>
       </div>
     );
   }
@@ -689,8 +789,8 @@ export function NodeGrid() {
         <Link
           to="/assets"
           className="cost-summary-ball show"
-          aria-label="打开资产统计页"
-          title="资产统计"
+          aria-label={t("home.openAssets")}
+          title={t("home.assetsTitle")}
         >
           <span className="cost-summary-ball-icon" aria-hidden>
             <CircleDollarSign size={16} />
@@ -728,8 +828,8 @@ export function NodeGrid() {
       <>
         {homeHeader}
         <div className="flex h-[40vh] flex-col items-center justify-center gap-2 text-[var(--text-tertiary)]">
-          <span className="text-[15px]">尚未连接到任何节点</span>
-          <span className="text-[12px]">等待后端推送或前往管理后台添加</span>
+          <span className="text-[15px]">{t("home.noNodes")}</span>
+          <span className="text-[12px]">{t("home.noNodesHint")}</span>
         </div>
       </>
     );
@@ -746,6 +846,8 @@ export function NodeGrid() {
               groups={groupOptions}
               selectedGroup={selectedGroup}
               onSelectGroup={handleSelectGroup}
+              onReorder={handleGroupReorder}
+              hasSort={showHomeSort}
             />
           )}
           {showHomeSort && <HomeSortControl state={sort} />}

@@ -1,3 +1,4 @@
+import { t, type MessageKey } from "@/i18n";
 import {
   memo,
   useCallback,
@@ -11,14 +12,16 @@ import {
 } from "react";
 import UplotReact from "uplot-react";
 import uPlot from "uplot";
-import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
+import { ArrowDown, ArrowUp, Cpu, Gauge, HardDrive, Layers, MemoryStick, Network, RefreshCw, Workflow } from "lucide-react";
 import { useLoadRecords } from "@/hooks/useRecords";
 import { useNodeMeta, useNodeMetrics } from "@/hooks/useNode";
 import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
 import {
   buildChartTooltipHooks,
   SPARSE_SERIES_POINTS,
-  CHART_PALETTE,
+  axisDecimals,
+  chartAlpha,
+  zeroBasedTicks,
   createTimeAxisFormatter,
   formatChartCoverageTime,
   getAxisColors,
@@ -39,6 +42,8 @@ import { formatByteRateLabel, formatBytes, formatTrafficRateLabel } from "@/util
 import { historyChartRangeSeconds, historyCoverageLabel } from "@/utils/historyRange";
 import { resolveLoadRecordTotals } from "@/utils/loadMetrics";
 import { usePreferences } from "@/hooks/usePreferences";
+import { useMetricColorsVersion } from "@/hooks/useMetricColors";
+import { safeCanvasColor } from "@/components/node/CanvasStrip";
 import type { LoadRecord, NodeMetrics } from "@/types/cfsm";
 
 const LOAD_HISTORY_SAMPLE_LIMIT = 360;
@@ -74,31 +79,56 @@ const RESUME_REFETCH_HIDDEN_MS = 30_000;
 const STALE_TAIL_REFETCH_MS = 5 * 60_000;
 
 const CPU_KEYS = ["cpu"];
-const CPU_COLORS = [CHART_PALETTE.cpu];
 const MEMORY_KEYS = ["ram", "swap"];
-const MEMORY_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.warning];
 const DISK_KEYS = ["disk"];
-const DISK_COLORS = [CHART_PALETTE.disk];
 const DISK_IO_KEYS = ["diskRead", "diskWrite"];
-const DISK_IO_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.warning];
 const NETWORK_KEYS = ["netIn", "netOut"];
-const NETWORK_COLORS = [CHART_PALETTE.success, CHART_PALETTE.cpu];
 const CONNECTION_KEYS = ["connections", "udp"];
-const CONNECTION_COLORS = [CHART_PALETTE.memory, CHART_PALETTE.cpu];
+const LOAD_KEYS = ["load1", "load5", "load15"];
 const PROCESS_KEYS = ["process"];
-const PROCESS_COLORS = [CHART_PALETTE.warning];
-const SERIES_LABELS: Record<string, string> = {
+// 线条配色的规矩（站长 2026-10-15 嫌转色相出来的颜色不好看、而且不悬停分不清哪条是哪条）：
+// 每张图的主线用那张图自己的颜色，首页卡片上有的指标读同一个 CSS 变量（配色面板改了这里跟着变）；
+// 第二条线一律琥珀色、第三条（只有负载）天蓝，整页同一个角色同一个颜色，配合标题下的图例看。
+// 网络例外，下行 / 上行沿用首页的两种颜色。按 OKLab 色差量过，浅色 / 深色每对都在 0.2 以上。
+const FIXED_CHART_COLORS = {
+  light: { second: "#f59e0b", third: "#0ea5e9", diskIo: "#0ea5e9", connections: "#14b8a6", process: "#6366f1" },
+  dark: { second: "#fbbf24", third: "#38bdf8", diskIo: "#38bdf8", connections: "#2dd4bf", process: "#818cf8" },
+} as const;
+
+function resolveLoadChartColors(appearance: "light" | "dark") {
+  const read = (name: string) => safeCanvasColor(`var(${name})`);
+  const fixed = FIXED_CHART_COLORS[appearance];
+  return {
+    cpu: [read("--progress-cpu")],
+    // Swap 色的默认值就是琥珀（tokens.css），仍读变量，配色面板里单独改过的照用。
+    memory: [read("--progress-memory"), read("--progress-swap")],
+    network: [read("--traffic-down"), read("--traffic-up")],
+    load: [read("--progress-load"), fixed.second, fixed.third],
+    disk: [read("--progress-disk")],
+    diskIo: [fixed.diskIo, fixed.second],
+    connections: [fixed.connections, fixed.second],
+    process: [fixed.process],
+  };
+}
+
+const SERIES_LABEL_KEYS: Record<string, MessageKey> = {
+  ram: "chart.series.ram",
+  disk: "metric.disk",
+  diskRead: "chart.series.diskRead",
+  diskWrite: "chart.series.diskWrite",
+  netIn: "traffic.download",
+  netOut: "traffic.upload",
+  process: "chart.series.process",
+  load1: "chart.series.load1",
+  load5: "chart.series.load5",
+  load15: "chart.series.load15",
+};
+// 不用翻译的线名（CPU / Swap / TCP / UDP）。
+const SERIES_LITERAL_LABELS: Record<string, string> = {
   cpu: "CPU",
-  ram: "内存",
   swap: "Swap",
-  disk: "磁盘",
-  diskRead: "读取",
-  diskWrite: "写入",
-  netIn: "下行",
-  netOut: "上行",
   connections: "TCP",
   udp: "UDP",
-  process: "进程",
 };
 const LOAD_INTERPOLATE_KEYS = [
   "cpu",
@@ -112,6 +142,9 @@ const LOAD_INTERPOLATE_KEYS = [
   "connections",
   "udp",
   "process",
+  "load1",
+  "load5",
+  "load15",
 ];
 
 interface ChartPoint {
@@ -141,6 +174,9 @@ const DOWNSAMPLE_KEYS = [
   "connections",
   "udp",
   "process",
+  "load1",
+  "load5",
+  "load15",
 ] as const;
 
 // 走与 Ping 图同一套时间分桶保峰降采样:抽点式降采样会随机丢掉桶内尖峰,
@@ -161,7 +197,8 @@ function downsamplePoints(points: ChartPoint[], limit: number) {
 }
 
 function getSeriesLabel(key: string) {
-  return SERIES_LABELS[key] ?? key;
+  const labelKey = SERIES_LABEL_KEYS[key];
+  return labelKey ? t(labelKey) : SERIES_LITERAL_LABELS[key] ?? key;
 }
 
 function pointFromNode(node: NodeMetrics): ChartPoint {
@@ -179,6 +216,9 @@ function pointFromNode(node: NodeMetrics): ChartPoint {
     connections: node.connectionsTcp,
     udp: node.connectionsUdp,
     process: node.process,
+    load1: node.load1,
+    load5: node.load5,
+    load15: node.load15,
   };
 }
 
@@ -192,13 +232,6 @@ function formatTooltipValue(key: string, value: number | null | undefined, unit:
   return value.toFixed(2);
 }
 
-function formatPercentAxisValue(value: number, min: number, max: number) {
-  const span = Math.abs(max - min);
-  if (span < 0.5) return `${value.toFixed(2)}%`;
-  if (span < 5) return `${value.toFixed(1)}%`;
-  return `${Math.round(value)}%`;
-}
-
 function formatNetworkAxisValue(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "";
   return formatTrafficRateLabel(value);
@@ -209,12 +242,6 @@ function formatByteRateAxisValue(value: number) {
   return formatByteRateLabel(value);
 }
 
-function formatCountAxisValue(value: number, min: number, max: number) {
-  const span = Math.abs(max - min);
-  if (span < 10) return value.toFixed(1);
-  return `${Math.round(value)}`;
-}
-
 /**
  * 负载图表用样条曲线，和后端内置主题一个观感（站长 2026-09-21 提的）。
  *
@@ -222,6 +249,26 @@ function formatCountAxisValue(value: number, min: number, max: number) {
  * uPlot 会把线裁在绘图区里，看着就是贴着底边，不会画出负值刻度。
  */
 const SPLINE_PATHS = uPlot.paths.spline?.();
+
+/**
+ * 六张负载图共用的纵轴宽度，按刻度文字最宽的那张（网络，如「100.0 Mbps」）定。
+ *
+ * 原来百分比 / 计数图 52、磁盘 IO 72、网络 78，同一列上下两张图的绘图区左边差 20~26 像素
+ * （站长 2026-10-14 要求对齐）。别再按图单独给宽度。
+ */
+const LOAD_Y_AXIS_SIZE = 78;
+
+type LoadAxisKind = "percent" | "network" | "byteRate" | "count" | "integer";
+
+/** 纵轴范围：下限固定 0，上限取数据最大值留一点余量并取整；全是 0 或没数据时给 0~1。百分比不超过 100。 */
+function zeroBasedYRange(max: number | null, axisKind: LoadAxisKind): uPlot.Range.MinMax {
+  const top = max != null && Number.isFinite(max) && max > 0 ? max : 1;
+  const padded = uPlot.rangeNum(0, top, 0.1, true)[1] ?? top;
+  if (axisKind === "percent" && top <= 100) return [0, Math.min(padded, 100)];
+  // 整数轴至少到 2，0 以上才放得下 1、2 两档。
+  if (axisKind === "integer") return [0, Math.max(padded, 2)];
+  return [0, padded];
+}
 
 // 不含尺寸的配置。width/height 由调用方在另一个 memo 里加上，resize 时只改这两个 key，
 // uplot-react 就会调 setSize() 而不是重建整个 chart。(用普通函数而非 hook——它不调任何
@@ -234,9 +281,9 @@ function buildBaseOptions({
   rangeHours,
   spanGaps,
   axisKind,
-  axisSize = 52,
   getXRange,
   fillAllSeries,
+  syncKey,
 }: {
   title: string;
   keys: string[];
@@ -244,27 +291,43 @@ function buildBaseOptions({
   resolvedAppearance: "light" | "dark";
   rangeHours: number;
   spanGaps?: boolean;
-  axisKind: "percent" | "network" | "byteRate" | "count";
-  axisSize?: number;
+  axisKind: LoadAxisKind;
   /**
    * 历史档钉住的横轴区间，传取值函数而不是区间本身：实时样本每接上一个，区间右端就往后推一次，
    * 区间要是进了 options，uplot-react 比出 options 变了就把整张图销毁重建（每一两秒六张图全部重画）。
    */
   getXRange?: (() => [number, number] | null) | null;
   fillAllSeries?: boolean;
+  /** 同一个 key 的几张图游标联动：鼠标在一张图上移动，其余几张在同一时刻显示各自的小窗口。 */
+  syncKey: string;
 }): Omit<uPlot.Options, "width" | "height"> {
   const isDark = resolvedAppearance === "dark";
   const { grid, text } = getAxisColors(isDark);
 
   return {
     padding: [8, 12, 10, 2],
-    cursor: { drag: { x: true, y: false } },
+    cursor: {
+      drag: { x: true, y: false },
+      // 六张图按时间联动游标（站长 2026-10-14 要的）。只同步横轴：纵轴各图单位不同，别的图按鼠标的相对高度放游标。
+      // 只广播移动（移出图表时 uPlot 也是发一次坐标为负的移动，别的图跟着收起）；拖选缩放不联动，
+      // 免得在一张图上拖一下六张一起变。触屏的游标走 setCursor、不广播，手机上图是竖排的，联动没意义。
+      sync: {
+        key: syncKey,
+        scales: ["x", null],
+        filters: { pub: (type) => type === "mousemove" },
+      },
+    },
     legend: { show: false },
     scales: {
       x: getXRange
         ? { time: true, auto: false, range: (_self, min, max) => getXRange() ?? [min, max] }
         : { time: true },
-      y: { auto: true },
+      // 纵轴一律从 0 起（和 Ping 图一样，站长 2026-10-19）：原来按数据上下限自动取，
+      // 负载 0.3~0.6、连接数 10~15 这种小波动会被拉满整个图高，看着像大起大落。
+      y: {
+        auto: true,
+        range: (_self, _min, max) => zeroBasedYRange(max, axisKind),
+      },
     },
     axes: [
       {
@@ -278,16 +341,21 @@ function buildBaseOptions({
         stroke: text,
         grid: { stroke: grid, width: 1 },
         ticks: { stroke: grid },
-        size: axisSize,
-        values: (self, splits) => {
-          const min = Number(self.scales.y.min ?? 0);
-          const max = Number(self.scales.y.max ?? 0);
+        size: LOAD_Y_AXIS_SIZE,
+        // 刻度自己算：从 0 起、0 以上至少两档；进程数、连接数只取整数（原来跨度 1 时出「186.5」，站长 2026-10-16 截图）。
+        splits: (_self, _axisIdx, _min, max) =>
+          zeroBasedTicks(max, {
+            integer: axisKind === "integer",
+            unit: axisKind === "network" ? "bits" : axisKind === "byteRate" ? "binary" : "decimal",
+          }),
+        values: (_self, splits) => {
+          const decimals = axisDecimals(splits);
           return splits.map((value) => {
             if (value === 0 && axisKind !== "percent") return "";
             if (axisKind === "network") return formatNetworkAxisValue(value);
             if (axisKind === "byteRate") return formatByteRateAxisValue(value);
-            if (axisKind === "percent") return formatPercentAxisValue(value, min, max);
-            return formatCountAxisValue(value, min, max);
+            if (axisKind === "percent") return `${value.toFixed(decimals)}%`;
+            return value.toFixed(decimals);
           });
         },
       },
@@ -299,7 +367,7 @@ function buildBaseOptions({
         stroke: colors[index] ?? colors[0],
         // 默认只给第一条线填充；两条线地位对等时(磁盘读/写)全填，否则恰好为 0 的那条
         // 会独占填充色，看起来像它才是主角。
-        fill: fillAllSeries || index === 0 ? `${colors[index] ?? colors[0]}22` : undefined,
+        fill: fillAllSeries || index === 0 ? chartAlpha(colors[index] ?? colors[0], 0.13) : undefined,
         width: 1.6,
         paths: SPLINE_PATHS,
         spanGaps: spanGaps ?? false,
@@ -331,7 +399,6 @@ const ChartCard = memo(function ChartCard({
   unit = "",
   spanGaps,
   axisKind,
-  axisSize,
   xRange,
   fillAllSeries,
   accent,
@@ -348,8 +415,7 @@ const ChartCard = memo(function ChartCard({
   rangeHours: number;
   unit?: string;
   spanGaps?: boolean;
-  axisKind: "percent" | "network" | "byteRate" | "count";
-  axisSize?: number;
+  axisKind: LoadAxisKind;
   xRange?: [number, number] | null;
   fillAllSeries?: boolean;
   /** 卡片边框/图标的主色。默认跟随第一条线，指标本身有固定色时用它覆盖。 */
@@ -386,13 +452,12 @@ const ChartCard = memo(function ChartCard({
         rangeHours,
         spanGaps,
         axisKind,
-        axisSize,
         getXRange: hasXRange ? readXRange : null,
         fillAllSeries,
+        syncKey: `load-charts:${uuid}`,
       }),
     [
       axisKind,
-      axisSize,
       colors,
       fillAllSeries,
       hasXRange,
@@ -402,6 +467,7 @@ const ChartCard = memo(function ChartCard({
       resolvedAppearance,
       spanGaps,
       title,
+      uuid,
     ],
   );
 
@@ -444,9 +510,26 @@ const ChartCard = memo(function ChartCard({
       style={{ "--chart-accent": accent ?? colors[0] } as CSSProperties}
     >
       <header className="instance-chart-card-head">
-        <div className="instance-panel-subhead">
-          {icon}
-          <span>{title}</span>
+        <div className="instance-chart-card-title">
+          <div className="instance-panel-subhead">
+            {icon}
+            <span>{title}</span>
+          </div>
+          {/* 多条线的图常驻图例，不悬停也知道哪条是哪条（站长 2026-10-15）。 */}
+          {keys.length > 1 && (
+            <ul className="instance-chart-legend">
+              {keys.map((key, index) => (
+                <li key={key}>
+                  <span
+                    className="instance-chart-legend-swatch"
+                    style={{ background: colors[index] ?? colors[0] }}
+                    aria-hidden
+                  />
+                  {getSeriesLabel(key)}
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         <div className="instance-series-stats">
           <span className="tabular">{value}</span>
@@ -484,6 +567,13 @@ export function LoadChart({
   const node = useNodeMetrics(uuid, active);
   const meta = useNodeMeta(uuid);
   const { resolvedAppearance } = usePreferences();
+  const metricColorsVersion = useMetricColorsVersion();
+  const chartColors = useMemo(
+    () => resolveLoadChartColors(resolvedAppearance),
+    // 配色面板改色时版本号变，要重新读 CSS 变量（函数里没用到它，lint 看不出这层依赖）。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [resolvedAppearance, metricColorsVersion],
+  );
   const [realtimePoints, setRealtimePoints] = useState<ChartPoint[]>([]);
   /** 上一条实时样本的到达时刻，用来发现「断了一段」。 */
   const lastSampleAtRef = useRef(0);
@@ -561,6 +651,9 @@ export function LoadChart({
         connections: record.connections,
         udp: record.connections_udp,
         process: record.process,
+        load1: record.load,
+        load5: record.load5,
+        load15: record.load15,
       };
     });
     const sampled = downsamplePoints(rawPoints, getHistoryRenderLimit(hours));
@@ -621,10 +714,10 @@ export function LoadChart({
   const sourceRecordCount = historyRecords.length;
   const wasDownsampled = !isRealtime && sourceRecordCount > getHistoryRenderLimit(hours);
   const sampleSummary = isRealtime
-    ? `${points.length} 个点`
+    ? t("chart.points", { n: points.length })
     : wasDownsampled
-      ? `${points.length} / ${sourceRecordCount} 个点`
-      : `${points.length} 个点`;
+      ? t("chart.pointsOf", { n: points.length, total: sourceRecordCount })
+      : t("chart.points", { n: points.length });
   const coverageSummary = points.length
     ? `${formatChartCoverageTime(points[0].time)} - ${formatChartCoverageTime(points[points.length - 1].time)}`
     : "—";
@@ -647,14 +740,14 @@ export function LoadChart({
   );
 
   if (isLoading) {
-    return <InstanceChartLoading title="负载图表" />;
+    return <InstanceChartLoading title={t("chart.loadTitle")} />;
   }
 
   if (isError && !points.length) {
     return (
-      <InstancePanel title="负载图表">
+      <InstancePanel title={t("chart.loadTitle")}>
         <div className="instance-empty">
-          <span>负载历史加载失败</span>
+          <span>{t("chart.loadFailed")}</span>
           <button
             type="button"
             className="instance-toggle-button"
@@ -662,7 +755,7 @@ export function LoadChart({
             disabled={isFetching}
             aria-busy={isFetching}
           >
-            {isFetching ? "重试中" : "重试"}
+            {isFetching ? t("common.retrying") : t("common.retry")}
           </button>
         </div>
       </InstancePanel>
@@ -671,9 +764,9 @@ export function LoadChart({
 
   if (!points.length) {
     return (
-      <InstancePanel title="负载图表">
+      <InstancePanel title={t("chart.loadTitle")}>
         <div className="instance-empty">
-          <span>暂无负载历史数据</span>
+          <span>{t("chart.loadEmpty")}</span>
           <button
             type="button"
             className="instance-toggle-button"
@@ -682,7 +775,7 @@ export function LoadChart({
             aria-busy={isFetching}
           >
             <RefreshCw size={14} aria-hidden />
-            {isFetching ? "刷新中" : "刷新"}
+            {isFetching ? t("common.refreshing") : t("common.refresh")}
           </button>
         </div>
       </InstancePanel>
@@ -691,19 +784,19 @@ export function LoadChart({
 
   return (
     <InstancePanel
-      title="负载图表"
+      title={t("chart.loadTitle")}
       aside={
         <div className="instance-chart-headmeta">
-          <div className="instance-chart-meta" aria-label="图表数据范围">
+          <div className="instance-chart-meta" aria-label={t("chart.rangeLabel")}>
             <span title={coverageSummary}>
-              <strong>{coverageLabel ?? `覆盖 ${coverageSummary}`}</strong>
+              <strong>{coverageLabel ?? t("chart.coverage", { range: coverageSummary })}</strong>
             </span>
             <span>
-              采样 <strong>{sampleSummary}</strong>
+              {t("chart.samples")} <strong>{sampleSummary}</strong>
             </span>
           </div>
           <SwitchToggle
-            label="断点连线"
+            label={t("chart.connectGaps")}
             active={connectNulls}
             onToggle={() => setConnectNulls((value) => !value)}
           />
@@ -715,7 +808,7 @@ export function LoadChart({
             aria-busy={isFetching}
           >
             <RefreshCw size={14} aria-hidden />
-            {isFetching ? "刷新中" : "刷新"}
+            {isFetching ? t("common.refreshing") : t("common.refresh")}
           </button>
         </div>
       }
@@ -731,10 +824,10 @@ export function LoadChart({
               ? `${node.cpuPct.toFixed(2)}%`
               : `${(points[points.length - 1]?.cpu ?? 0).toFixed(2)}%`
           }
-          note="使用率"
+          note={t("chart.cpuNote")}
           points={points}
           keys={CPU_KEYS}
-          colors={CPU_COLORS}
+          colors={chartColors.cpu}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           unit="%"
@@ -744,7 +837,7 @@ export function LoadChart({
         />
         <ChartCard
           icon={<MemoryStick size={13} />}
-          title="内存"
+          title={t("metric.memory")}
           uuid={uuid}
           value={
             node
@@ -757,14 +850,14 @@ export function LoadChart({
             node
               ? node.swapTotal
                 ? `Swap ${formatBytes(node.swapUsed)} / ${formatBytes(node.swapTotal)}`
-                : "Swap 无"
+                : t("chart.swapNone")
               : latestHistoryRecord && latestHistoryTotals && latestHistoryTotals.swapTotal > 0
                 ? `Swap ${formatBytes(latestHistoryRecord.swap)} / ${formatBytes(latestHistoryTotals.swapTotal)}`
-                : "Swap 无"
+                : t("chart.swapNone")
           }
           points={points}
           keys={MEMORY_KEYS}
-          colors={MEMORY_COLORS}
+          colors={chartColors.memory}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           unit="%"
@@ -772,52 +865,9 @@ export function LoadChart({
           axisKind="percent"
           xRange={requestedXRange}
         />
-        {/* 磁盘卡片画 IO 速率，已用空间挪到副标题；探针没上报 IO 时整卡退回原来的空间占用图，
-            否则会是一张空图。 */}
-        {hasDiskIo ? (
-          <ChartCard
-            icon={<HardDrive size={13} />}
-            title="磁盘 IO"
-            uuid={uuid}
-            value={
-              latestDiskIo
-                ? `读 ${formatByteRateLabel(latestDiskIo.read)} · 写 ${formatByteRateLabel(latestDiskIo.write)}`
-                : "—"
-            }
-            note={diskUsageLabel === "—" ? "已用空间 —" : `已用 ${diskUsageLabel}`}
-            points={points}
-            keys={DISK_IO_KEYS}
-            colors={DISK_IO_COLORS}
-            resolvedAppearance={resolvedAppearance}
-            rangeHours={hours}
-            spanGaps={connectNulls}
-            axisKind="byteRate"
-            axisSize={72}
-            xRange={requestedXRange}
-            fillAllSeries
-            accent={CHART_PALETTE.disk}
-          />
-        ) : (
-          <ChartCard
-            icon={<HardDrive size={13} />}
-            title="磁盘"
-            uuid={uuid}
-            value={diskUsageLabel}
-            note="已用空间"
-            points={points}
-            keys={DISK_KEYS}
-            colors={DISK_COLORS}
-            resolvedAppearance={resolvedAppearance}
-            rangeHours={hours}
-            unit="%"
-            spanGaps={connectNulls}
-            axisKind="percent"
-            xRange={requestedXRange}
-          />
-        )}
         <ChartCard
           icon={<Network size={13} />}
-          title="网络"
+          title={t("chart.network")}
           uuid={uuid}
           value={
             node
@@ -834,17 +884,79 @@ export function LoadChart({
           }
           points={points}
           keys={NETWORK_KEYS}
-          colors={NETWORK_COLORS}
+          colors={chartColors.network}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           spanGaps={connectNulls}
           axisKind="network"
-          axisSize={78}
           xRange={requestedXRange}
         />
         <ChartCard
+          icon={<Gauge size={13} />}
+          title={t("metric.load")}
+          uuid={uuid}
+          value={
+            node
+              ? `${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`
+              : latestHistoryRecord
+                ? `${latestHistoryRecord.load.toFixed(2)} / ${latestHistoryRecord.load5.toFixed(2)} / ${latestHistoryRecord.load15.toFixed(2)}`
+                : "—"
+          }
+          // 核心数是看负载高不高的参照（负载持续超过核心数 = 有进程在排队）。
+          note={meta?.cpu_cores ? t("metric.cpuCores", { n: meta.cpu_cores }) : undefined}
+          points={points}
+          keys={LOAD_KEYS}
+          colors={chartColors.load}
+          resolvedAppearance={resolvedAppearance}
+          rangeHours={hours}
+          spanGaps={connectNulls}
+          axisKind="count"
+          xRange={requestedXRange}
+        />
+        <ChartCard
+          icon={<HardDrive size={13} />}
+          title={t("metric.disk")}
+          uuid={uuid}
+          value={diskUsageLabel}
+          note={t("chart.diskUsedSpace")}
+          points={points}
+          keys={DISK_KEYS}
+          colors={chartColors.disk}
+          resolvedAppearance={resolvedAppearance}
+          rangeHours={hours}
+          unit="%"
+          spanGaps={connectNulls}
+          axisKind="percent"
+          xRange={requestedXRange}
+        />
+        {/* 探针没上报 IO 时不画这张（会是一张空图），只剩上面的空间占用。 */}
+        {hasDiskIo && (
+          <ChartCard
+            icon={<HardDrive size={13} />}
+            title={t("chart.diskIo")}
+            uuid={uuid}
+            value={
+              latestDiskIo
+                ? t("chart.diskIoValue", {
+                    read: formatByteRateLabel(latestDiskIo.read),
+                    write: formatByteRateLabel(latestDiskIo.write),
+                  })
+                : "—"
+            }
+            points={points}
+            keys={DISK_IO_KEYS}
+            colors={chartColors.diskIo}
+            resolvedAppearance={resolvedAppearance}
+            rangeHours={hours}
+            spanGaps={connectNulls}
+            axisKind="byteRate"
+            xRange={requestedXRange}
+            fillAllSeries
+          />
+        )}
+        <ChartCard
           icon={<Workflow size={13} />}
-          title="连接数"
+          title={t("chart.connections")}
           uuid={uuid}
           value={
             node
@@ -853,19 +965,18 @@ export function LoadChart({
                 ? `TCP ${Math.round(latestHistoryRecord.connections ?? 0)} / UDP ${Math.round(latestHistoryRecord.connections_udp ?? 0)}`
                 : "—"
           }
-          note="连接"
           points={points}
           keys={CONNECTION_KEYS}
-          colors={CONNECTION_COLORS}
+          colors={chartColors.connections}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           spanGaps={connectNulls}
-          axisKind="count"
+          axisKind="integer"
           xRange={requestedXRange}
         />
         <ChartCard
-          icon={<Gauge size={13} />}
-          title="进程"
+          icon={<Layers size={13} />}
+          title={t("chart.processes")}
           uuid={uuid}
           value={
             node
@@ -874,20 +985,14 @@ export function LoadChart({
                 ? Math.round(latestHistoryRecord.process ?? 0).toString()
                 : "—"
           }
-          note={
-            node
-              ? `负载 ${node.load1.toFixed(2)} | ${node.load5.toFixed(2)} | ${node.load15.toFixed(2)}`
-              : latestHistoryRecord
-                ? `负载 ${(latestHistoryRecord.load ?? 0).toFixed(2)}`
-                : "—"
-          }
+          note={t("chart.processesNote")}
           points={points}
           keys={PROCESS_KEYS}
-          colors={PROCESS_COLORS}
+          colors={chartColors.process}
           resolvedAppearance={resolvedAppearance}
           rangeHours={hours}
           spanGaps={connectNulls}
-          axisKind="count"
+          axisKind="integer"
           xRange={requestedXRange}
         />
       </div>

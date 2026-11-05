@@ -1,16 +1,15 @@
+import { memoByLanguage, t } from "@/i18n";
 import { getExpireDaysRemaining, LONG_TERM_EXPIRE_DAYS } from "@/utils/format";
 
-const INT_PRICE_FORMATTER = new Intl.NumberFormat("zh-CN", {
-  minimumFractionDigits: 0,
-  maximumFractionDigits: 2,
-});
-const DECIMAL_PRICE_FORMATTER = new Intl.NumberFormat("zh-CN", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
+const intPriceFormatter = memoByLanguage(
+  (locale) => new Intl.NumberFormat(locale, { minimumFractionDigits: 0, maximumFractionDigits: 2 }),
+);
+const decimalPriceFormatter = memoByLanguage(
+  (locale) => new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+);
 
 function formatPriceNumber(value: number) {
-  return (Number.isInteger(value) ? INT_PRICE_FORMATTER : DECIMAL_PRICE_FORMATTER).format(value);
+  return (Number.isInteger(value) ? intPriceFormatter() : decimalPriceFormatter()).format(value);
 }
 
 function isLongTermExpire(value: string | number | null | undefined) {
@@ -129,17 +128,17 @@ export function formatBillingCycle(value: string | number | null | undefined) {
   const cycle = normalizeBillingCycle(value);
   switch (cycle.kind) {
     case "lifetime":
-      return "永久";
+      return t("billing.lifetime");
     case "month":
-      return "月";
+      return t("billing.month");
     case "quarter":
-      return "季";
+      return t("billing.quarter");
     case "halfYear":
-      return "半年";
+      return t("billing.halfYear");
     case "year":
-      return (cycle.years ?? 1) === 1 ? "年" : `${cycle.years}年`;
+      return (cycle.years ?? 1) === 1 ? t("billing.year") : t("billing.years", { n: cycle.years ?? 1 });
     case "days":
-      return `${cycle.days}天`;
+      return t("billing.days", { n: cycle.days ?? 0 });
   }
 }
 
@@ -155,8 +154,8 @@ export function formatRenewalPrice({
   expired_at?: string | number | null;
 }) {
   if (!Number.isFinite(price)) return null;
-  if (price === -1) return "免费";
-  if (price === 0) return isLongTermExpire(expired_at) ? "免费" : null;
+  if (price === -1) return t("billing.free");
+  if (price === 0) return isLongTermExpire(expired_at) ? t("billing.free") : null;
   if (price < 0) return null;
 
   const symbol = currency?.trim() || "¥";

@@ -40,14 +40,12 @@
 
 }
 
-/* 中小屏的完整快捷栏会占用顶部大部分宽度。由 React 同步显式状态类，兼容
-   Chrome 87，并覆盖平板宽度；折叠后站点名立即恢复。 */
-@media (max-width: 1023px) {
-  .home-dashboard.is-controls-expanded .home-brand {
-    visibility: hidden;
-    opacity: 0;
-    transform: translateX(-8px);
-  }
+/* 展开的快捷栏真盖住站点名时才藏（Home.tsx 按实际宽度算好再加这个类，兼容 Chrome 87）；
+   折叠后站点名立即恢复。 */
+.home-dashboard.is-controls-expanded .home-brand {
+  visibility: hidden;
+  opacity: 0;
+  transform: translateX(-8px);
 }
 
 .home-overview {
@@ -106,6 +104,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+/* 标题行右边的图标按钮（资产入口 / 续费提醒，24px）比标题文字高，不让它把这一行撑高：
+   撑高了这张卡的标题和大数字就比旁边三张低 4 像素左右。 */
+.overview-card-head > :not(.overview-card-label) {
+  margin-block: -4px;
 }
 
 .overview-card-label {
@@ -674,6 +678,28 @@
     box-shadow 160ms ease;
 }
 
+/* 分组标签也能拖动排序（「全部」除外）：长按不要弹系统菜单、不要选中文字；拖动中的那个浮在上面。 */
+.home-group-tab-draggable {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.home-group-tabs[data-reordering="true"],
+.home-group-tabs[data-reordering="true"] button {
+  cursor: grabbing;
+}
+
+.home-group-tabs button[data-dragging="true"] {
+  position: relative;
+  z-index: 2;
+  border-color: color-mix(in srgb, var(--border-strong) 70%, transparent);
+  background: var(--surface-elev);
+  color: var(--text-primary);
+  box-shadow: 0 14px 28px -14px rgba(0, 0, 0, 0.45);
+  will-change: transform;
+}
+
 .home-group-tabs button:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--hover-bg-a) 72%, transparent);
@@ -795,6 +821,7 @@
     padding: 0 10px;
     font-size: 11px;
   }
+
 }
 
 /* 地区筛选栏:与分组栏同一套面板视觉(surface-a + 描边 + 圆角 + 浮起阴影);国旗 chip 换行铺开。
@@ -922,11 +949,17 @@
   align-self: center;
 }
 
+/* 分组栏伸展成整行时（NodeGrid 的 GroupTabs 量出来放不下一格才加），排序按钮钉回同一行的右端。 */
+.home-controls-bar[data-groups-span="true"] .home-sort {
+  grid-row: 1;
+}
+
 .home-sort-trigger {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 38px;
+  /* 和同一行的分组栏等高（32px 的标签 + 上下 5px 内边距 + 描边）。 */
+  height: 44px;
   padding: 0 12px;
   border: 1px solid color-mix(in srgb, var(--border-strong) 54%, transparent);
   border-radius: 14px;
@@ -943,6 +976,13 @@
     color 160ms ease,
     border-color 160ms ease,
     background 160ms ease;
+}
+
+/* 分组栏的标签在窄屏下矮 2px（见上面 560px 那段），排序按钮跟着。写在基础规则后面才压得过它。 */
+@media (max-width: 560px) {
+  .home-sort-trigger {
+    height: 42px;
+  }
 }
 
 .home-sort-trigger svg {

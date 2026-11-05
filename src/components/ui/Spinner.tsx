@@ -1,6 +1,8 @@
+import { t } from "@/i18n";
+
 export function Spinner({
   size = 20,
-  label = "加载中",
+  label = t("common.loading"),
 }: {
   size?: number;
   label?: string;

@@ -15,7 +15,7 @@ describe("node list ping status", () => {
     expect(formatListPingStatus(null, "pending")).toEqual({
       visibleText: "加载中",
       title: "正在加载首页 Ping",
-      ariaText: "首页 Ping 加载中",
+      ariaText: "正在加载首页 Ping",
     });
   });
 

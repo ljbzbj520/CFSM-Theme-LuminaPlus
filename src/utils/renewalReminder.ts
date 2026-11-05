@@ -1,3 +1,4 @@
+import { compareText, t } from "@/i18n";
 import type { NodeInfo } from "@/types/cfsm";
 import { formatRenewalPrice } from "@/utils/billing";
 import { getExpireDaysRemaining, resolveExpireTimestamp } from "@/utils/format";
@@ -95,26 +96,26 @@ export function getRenewalReminders(
           currency: node.currency,
           billing_cycle: node.billing_cycle,
           expired_at: node.expired_at,
-        }) ?? "价格未设置",
+        }) ?? t("renewal.priceUnset"),
       autoRenewal: node.auto_renewal,
       tone: expired || critical ? "critical" : node.auto_renewal ? "success" : "warning",
       statusLabel: expired
-        ? "已过期"
+        ? t("renewal.statusExpired")
         : node.auto_renewal
-          ? "自动续费已开启"
-          : "即将到期",
+          ? t("renewal.statusAutoRenew")
+          : t("renewal.statusExpiring"),
     });
   }
 
   return reminders.sort(
-    (a, b) => a.daysRemaining - b.daysRemaining || a.name.localeCompare(b.name, "zh-CN"),
+    (a, b) => a.daysRemaining - b.daysRemaining || compareText(a.name, b.name),
   );
 }
 
 export function formatRenewalReminderExpiry(daysRemaining: number) {
-  if (daysRemaining < 0) return `已过期 ${Math.abs(daysRemaining)} 天`;
-  if (daysRemaining === 0) return "今日到期";
-  return `${daysRemaining} 天后到期`;
+  if (daysRemaining < 0) return t("renewal.expiredDaysAgo", { n: Math.abs(daysRemaining) });
+  if (daysRemaining === 0) return t("renewal.expiresToday");
+  return t("renewal.expiresIn", { n: daysRemaining });
 }
 
 export function getVisibleRenewalReminders(

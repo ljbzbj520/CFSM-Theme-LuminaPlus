@@ -56,6 +56,8 @@
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
+  /* 30px 的图标按钮和 24px 的标题行顶端对齐时中线低 3 像素，往上提回来。 */
+  margin-top: -3px;
 }
 
 .server-card-title-block {
@@ -224,7 +226,8 @@
 .server-traffic-section {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
+  /* 大卡各段的左右两栏用同一个栏间距（20px），分界线才在一条竖线上。 */
+  gap: 22px 20px;
 }
 
 .traffic-stat {
@@ -434,7 +437,7 @@
 .multi-ping-columns {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  gap: 18px 20px;
 }
 
 .multi-ping-metric-column {
@@ -503,6 +506,29 @@
   white-space: nowrap;
 }
 
+/* 单线路时跟在「延迟」后面的线路名（SingleLineName）：比标签淡一档，点开换线路；
+   悬停 / 展开变深、焦点框沿用上面 .multi-ping-name-trigger 那套。四种视图共用。 */
+.single-ping-line {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-tertiary);
+  font-weight: 560;
+  letter-spacing: 0;
+}
+
+.single-ping-sep {
+  flex: 0 0 auto;
+}
+
+.single-ping-name {
+  min-width: 0;
+  max-width: 9em;
+  color: inherit;
+  font: inherit;
+}
+
 .multi-ping-value {
   flex: 0 0 auto;
   font-size: 11.5px;
@@ -534,7 +560,8 @@
 }
 
 .multi-ping-status.is-compact .multi-ping-columns {
-  gap: 14px;
+  /* 栏间距和上面指标区（.compact-node-vitals）一致。 */
+  gap: 14px 16px;
 }
 
 .multi-ping-status.is-compact .multi-ping-metric-column {
@@ -581,7 +608,7 @@
 .server-card-meta-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 22px;
+  gap: 22px 20px;
 }
 
 /* 标签行 — 无上边框,pill 紧贴 footer meta 行之后 */
@@ -631,8 +658,9 @@
   gap: 5px;
   /* 先 rgba() 兜底、后 color-mix() 覆盖:不支持 color-mix() 的浏览器(老 WebKit)
      仍得到可读的绿色 pill,现代浏览器则用主题自适应的 mix。 */
-  border: 1px solid rgba(47, 158, 101, 0.22);
-  border: 1px solid color-mix(in srgb, var(--status-success) 18%, transparent);
+  /* 描边画在内侧（inset 阴影），不占高度：用 border 的话它比旁边没描边的自定义标签高 2 像素。 */
+  box-shadow: inset 0 0 0 1px rgba(47, 158, 101, 0.22);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-success) 18%, transparent);
   border-radius: 8px;
   background: rgba(47, 158, 101, 0.1);
   background: color-mix(in srgb, var(--status-success) 10%, var(--surface-elev));
@@ -656,6 +684,11 @@
 
   .server-card-title-link {
     font-size: 15px;
+  }
+
+  /* 标题行在这个宽度下是 22.5px 高，图标按钮多提 0.75px 才居中。 */
+  .server-card-actions {
+    margin-top: -3.75px;
   }
 
   .server-traffic-section,

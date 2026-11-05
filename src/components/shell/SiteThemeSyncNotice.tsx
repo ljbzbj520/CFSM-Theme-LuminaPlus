@@ -1,3 +1,4 @@
+import { memoByLanguage, t } from "@/i18n";
 import { useEffect, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { Cloud, CloudAlert, History } from "lucide-react";
@@ -16,25 +17,36 @@ import { ApiRequestError } from "@/services/cfsm/http";
 
 function describeSyncError(error: unknown): string {
   const status = error instanceof ApiRequestError ? error.status : 0;
-  if (status === 401) return "登录态已失效：到 /admin 重新登录后点「重试」，改动先留在本机。";
+  if (status === 401) return t("sync.err401");
   // http 层清掉失效的人机验证凭证后，全局验证弹窗会自己重新出来（见 TurnstileGate）。
-  if (status === 403) return "本站需要人机验证：完成弹出的验证后点「重试」。";
-  if (status === 400) return "配置格式被后端拒绝（invalidThemeOptionsFormat），请把这条信息反馈给作者。";
-  return error instanceof Error && error.message ? error.message : "网络错误，改动先留在本机。";
+  if (status === 403) return t("sync.err403");
+  if (status === 400) return t("sync.err400");
+  return error instanceof Error && error.message ? error.message : t("sync.errNetwork");
 }
 
 function describeRestoreError(error: unknown): string {
   const status = error instanceof ApiRequestError ? error.status : 0;
-  if (status === 401) return "登录态已失效：到 /admin 重新登录后再点一次恢复。";
-  if (status === 403) return "本站需要人机验证：完成弹出的验证后再点一次恢复。";
-  return error instanceof Error && error.message ? `恢复失败：${error.message}` : "恢复失败，请稍后再试。";
+  if (status === 401) return t("sync.restore401");
+  if (status === 403) return t("sync.restore403");
+  return error instanceof Error && error.message
+    ? t("sync.restoreFailedWith", { message: error.message })
+    : t("sync.restoreFailed");
 }
 
+const backupTimeFormatter = memoByLanguage(
+  (locale) =>
+    new Intl.DateTimeFormat(locale, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+);
+
 function formatBackupTime(at: number | null): string {
-  if (at == null) return "上次";
-  const date = new Date(at);
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${date.getMonth() + 1} 月 ${date.getDate()} 日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  if (at == null) return t("sync.lastTime");
+  return backupTimeFormatter().format(at);
 }
 
 /** 同步成功的提示停留多久。 */
@@ -77,7 +89,7 @@ export function SiteThemeSyncNotice() {
     setRestoring(true);
     setRestoreError(null);
     try {
-      if (!(await restoreSiteThemeBackup())) setRestoreError("正在同步别的改动，稍后再点一次恢复。");
+      if (!(await restoreSiteThemeBackup())) setRestoreError(t("sync.restoreBusy"));
     } catch (error) {
       setRestoreError(describeRestoreError(error));
     } finally {
@@ -112,10 +124,10 @@ export function SiteThemeSyncNotice() {
         >
           <History size={16} strokeWidth={2} className="realtime-session-prompt-icon" aria-hidden />
           <div className="realtime-session-prompt-body">
-            <strong id={backupTitleId}>主题设置被改过了</strong>
+            <strong id={backupTitleId}>{t("sync.backupTitle")}</strong>
             <p>
               {restoreError ??
-                `后端现在的设置和这台设备 ${formatBackupTime(backupCheck.backupAt)} 同步的不一样，可能是切过别的主题，或在后台保存时写回了旧配置。`}
+                t("sync.backupBody", { time: formatBackupTime(backupCheck.backupAt) })}
             </p>
           </div>
           <div className="realtime-session-prompt-actions">
@@ -125,7 +137,7 @@ export function SiteThemeSyncNotice() {
               onClick={handleDismissBackup}
               disabled={restoring}
             >
-              忽略
+              {t("sync.ignore")}
             </button>
             <button
               type="button"
@@ -134,7 +146,7 @@ export function SiteThemeSyncNotice() {
               disabled={restoring}
               aria-busy={restoring}
             >
-              {restoring ? "恢复中" : "恢复上次的设置"}
+              {restoring ? t("sync.restoring") : t("sync.restore")}
             </button>
           </div>
         </section>
@@ -148,8 +160,8 @@ export function SiteThemeSyncNotice() {
       >
         <Cloud size={16} strokeWidth={2} className="realtime-session-prompt-icon" aria-hidden />
         <div className="realtime-session-prompt-body">
-          <strong>改动已同步到后端</strong>
-          <p>所有设备与访客都会用这套配置。</p>
+          <strong>{t("sync.successTitle")}</strong>
+          <p>{t("sync.successBody")}</p>
         </div>
       </section>
     );
@@ -163,7 +175,7 @@ export function SiteThemeSyncNotice() {
     >
       <CloudAlert size={16} strokeWidth={2} className="realtime-session-prompt-icon" aria-hidden />
       <div className="realtime-session-prompt-body">
-        <strong id={titleId}>设置没能同步到后端</strong>
+        <strong id={titleId}>{t("sync.failedTitle")}</strong>
         <p>{describeSyncError(status.error)}</p>
       </div>
       <div className="realtime-session-prompt-actions">
@@ -172,14 +184,14 @@ export function SiteThemeSyncNotice() {
           className="control-button realtime-session-prompt-button"
           onClick={() => setDismissedError(status.error)}
         >
-          关闭
+          {t("common.close")}
         </button>
         <button
           type="button"
           className="control-button realtime-session-prompt-button is-primary"
           onClick={retrySiteThemeSync}
         >
-          重试
+          {t("common.retry")}
         </button>
       </div>
     </section>

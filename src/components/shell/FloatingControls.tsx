@@ -1,3 +1,4 @@
+import { t, type MessageKey } from "@/i18n";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AlertTriangle, ChevronLeft, ChevronRight, Grid3x3, LayoutGrid, List, Monitor, Palette, Rows3, Settings, SlidersHorizontal, Sun, Moon } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -8,6 +9,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
 import { getAdminUrl } from "@/services/cfsm/config";
 import type { NodeViewMode } from "@/utils/themeSettings";
+import { readQuickControlsExpanded, writeQuickControlsExpanded } from "@/utils/quickControlsStorage";
 import { clsx } from "clsx";
 
 const MetricColorPicker = lazy(() =>
@@ -16,17 +18,17 @@ const MetricColorPicker = lazy(() =>
 
 // 悬浮球切换按钮展示"下一档"的图标/文案(点击后会切到的视图),而不是当前视图——
 // 与 ThemeManage 里 NODE_VIEW_MODE_OPTIONS 的图标语义保持一致。
-const VIEW_MODE_META: Record<NodeViewMode, { icon: typeof LayoutGrid; label: string }> = {
-  large: { icon: LayoutGrid, label: "大视图" },
-  compact: { icon: Rows3, label: "小视图" },
-  mini: { icon: Grid3x3, label: "迷你视图" },
-  list: { icon: List, label: "列表视图" },
+const VIEW_MODE_META: Record<NodeViewMode, { icon: typeof LayoutGrid; labelKey: MessageKey }> = {
+  large: { icon: LayoutGrid, labelKey: "viewMode.large" },
+  compact: { icon: Rows3, labelKey: "viewMode.compact" },
+  mini: { icon: Grid3x3, labelKey: "viewMode.mini" },
+  list: { icon: List, labelKey: "viewMode.list" },
 };
 
 const APPEARANCE_OPTIONS = [
-  { value: "light", icon: Sun, label: "浅色" },
-  { value: "system", icon: Monitor, label: "跟随系统" },
-  { value: "dark", icon: Moon, label: "深色" },
+  { value: "light", icon: Sun, labelKey: "appearance.light" },
+  { value: "system", icon: Monitor, labelKey: "appearance.system" },
+  { value: "dark", icon: Moon, labelKey: "appearance.dark" },
 ] as const;
 
 export function FloatingControls({
@@ -39,15 +41,19 @@ export function FloatingControls({
   const { data: me } = useAuth();
   const themeSettings = useThemeSettings();
   const { failureStreak } = useNodeStoreStatus();
-  const [collapsed, setCollapsed] = useState(true);
+  // 上次展开着就接着展开（只在宽屏上，见 quickControlsStorage）。
+  const [collapsed, setCollapsed] = useState(() => !readQuickControlsExpanded());
   const [colorsOpen, setColorsOpen] = useState(false);
   const [colorsMounted, setColorsMounted] = useState(false);
   const settingsReady = themeSettings.isReady;
   const showAdmin = settingsReady && themeSettings.enableAdminButton;
   // 主题设置与配色都只保存在本机浏览器（第三方主题不能写后端配置），
   // 因此对所有访客开放，各自调各自的。
+  // 哪些按钮显示由「设置 → 外观 → 快捷栏」决定；主题设置按钮不让关，否则关光了就回不到设置页。
   const showThemeManage = settingsReady;
-  const showColorPicker = settingsReady;
+  const showAppearance = settingsReady && themeSettings.quickShowAppearance;
+  const showViewMode = settingsReady && themeSettings.quickShowViewMode;
+  const showColorPicker = settingsReady && themeSettings.quickShowColors;
   const showSyncWarning = failureStreak >= 2;
   const hiddenTabIndex = collapsed ? -1 : undefined;
   const ToggleIcon = collapsed ? ChevronLeft : ChevronRight;
@@ -55,16 +61,16 @@ export function FloatingControls({
   // 只要不在最宽松的大卡默认态,就视为"已切换"，按钮保持高亮。
   const isReducedView = mode !== "large";
   useEffect(() => {
-    onExpandedChange?.(false);
-    return () => onExpandedChange?.(false);
-  }, [onExpandedChange]);
+    onExpandedChange?.(!collapsed);
+  }, [collapsed, onExpandedChange]);
+  useEffect(() => () => onExpandedChange?.(false), [onExpandedChange]);
 
   const toggleControls = () => {
     // 收起快捷栏时同时结束子面板状态，避免下次展开时调色盘自动复现。
     const nextCollapsed = !collapsed;
     if (nextCollapsed) setColorsOpen(false);
     setCollapsed(nextCollapsed);
-    onExpandedChange?.(!nextCollapsed);
+    writeQuickControlsExpanded(!nextCollapsed);
   };
 
   return (
@@ -78,71 +84,71 @@ export function FloatingControls({
       <div className="floating-controls-inner">
         <div className="floating-controls-row">
           <div className="floating-controls-actions" aria-hidden={collapsed}>
-            {settingsReady && (
-              <>
-                <div
-                  className="control-group floating-controls-appearance"
-                  role="group"
-                  aria-label="外观选择"
-                >
-                  {APPEARANCE_OPTIONS.map(({ value, icon: Icon, label }) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setAppearance(value)}
-                      aria-label={label}
-                      aria-pressed={appearance === value}
-                      title={label}
-                      tabIndex={hiddenTabIndex}
-                      className={clsx(
-                        "control-button grid h-9 w-9 place-items-center",
-                        appearance === value && "control-toggle is-active",
-                      )}
-                    >
-                      <Icon size={16} />
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={toggleMode}
-                  aria-label="切换卡片视图"
-                  aria-pressed={isReducedView}
-                  title={`临时切换到${VIEW_MODE_META[nextMode].label}`}
-                  tabIndex={hiddenTabIndex}
-                  className={clsx(
-                    "control-button grid h-9 w-9 place-items-center",
-                    isReducedView && "control-toggle is-active",
-                  )}
-                >
-                  <ViewIcon size={16} />
-                </button>
-                {showColorPicker && (
+            {showAppearance && (
+              <div
+                className="control-group floating-controls-appearance"
+                role="group"
+                aria-label={t("quick.appearance")}
+              >
+                {APPEARANCE_OPTIONS.map(({ value, icon: Icon, labelKey }) => (
                   <button
+                    key={value}
                     type="button"
-                    onClick={() => {
-                      setColorsMounted(true);
-                      setColorsOpen((value) => !value);
-                    }}
-                    aria-label="卡片配色"
-                    aria-pressed={colorsOpen}
-                    title="卡片配色"
+                    onClick={() => setAppearance(value)}
+                    aria-label={t(labelKey)}
+                    aria-pressed={appearance === value}
+                    title={t(labelKey)}
                     tabIndex={hiddenTabIndex}
                     className={clsx(
                       "control-button grid h-9 w-9 place-items-center",
-                      colorsOpen && "control-toggle is-active",
+                      appearance === value && "control-toggle is-active",
                     )}
                   >
-                    <Palette size={16} />
+                    <Icon size={16} />
                   </button>
+                ))}
+              </div>
+            )}
+            {showViewMode && (
+              <button
+                type="button"
+                onClick={toggleMode}
+                aria-label={t("quick.switchView")}
+                aria-pressed={isReducedView}
+                title={t("quick.switchTo", { view: t(VIEW_MODE_META[nextMode].labelKey) })}
+                tabIndex={hiddenTabIndex}
+                className={clsx(
+                  "control-button grid h-9 w-9 place-items-center",
+                  isReducedView && "control-toggle is-active",
                 )}
-              </>
+              >
+                <ViewIcon size={16} />
+              </button>
+            )}
+            {showColorPicker && (
+              <button
+                type="button"
+                onClick={() => {
+                  setColorsMounted(true);
+                  setColorsOpen((value) => !value);
+                }}
+                aria-label={t("quick.cardColors")}
+                aria-pressed={colorsOpen}
+                title={t("quick.cardColors")}
+                tabIndex={hiddenTabIndex}
+                className={clsx(
+                  "control-button grid h-9 w-9 place-items-center",
+                  colorsOpen && "control-toggle is-active",
+                )}
+              >
+                <Palette size={16} />
+              </button>
             )}
             {showThemeManage && (
               <Link
                 to="/?view=theme-manage"
-                aria-label="主题设置"
-                title="主题设置"
+                aria-label={t("quick.themeSettings")}
+                title={t("quick.themeSettings")}
                 tabIndex={hiddenTabIndex}
                 className="control-button grid h-9 w-9 place-items-center"
               >
@@ -152,8 +158,8 @@ export function FloatingControls({
             {showAdmin && (
               <a
                 href={getAdminUrl()}
-                aria-label={me?.logged_in ? "管理" : "后台登录"}
-                title={me?.logged_in ? "管理" : "后台登录"}
+                aria-label={t(me?.logged_in ? "quick.admin" : "quick.adminLogin")}
+                title={t(me?.logged_in ? "quick.admin" : "quick.adminLogin")}
                 tabIndex={hiddenTabIndex}
                 className="control-button grid h-9 w-9 place-items-center"
               >
@@ -164,10 +170,10 @@ export function FloatingControls({
           <button
             type="button"
             className="control-button floating-controls-trigger grid h-9 w-9 place-items-center"
-            aria-label={collapsed ? "展开快捷按钮" : "收起快捷按钮"}
+            aria-label={t(collapsed ? "quick.expand" : "quick.collapse")}
             aria-expanded={!collapsed}
             onClick={toggleControls}
-            title={collapsed ? "展开快捷按钮" : "收起快捷按钮"}
+            title={t(collapsed ? "quick.expand" : "quick.collapse")}
           >
             <ToggleIcon size={16} />
             {showSyncWarning && collapsed && (
@@ -183,7 +189,7 @@ export function FloatingControls({
         {showSyncWarning && !collapsed && !colorsOpen && (
           <div className="floating-controls-sync-warning pointer-events-none flex items-center gap-2 rounded-full border border-[color-mix(in_srgb,var(--status-offline)_32%,transparent)] bg-[color-mix(in_srgb,var(--surface-a)_90%,transparent)] px-3 py-1 text-[11px] font-medium text-[var(--status-offline)] shadow-[0_10px_25px_-18px_rgba(0,0,0,0.8)] backdrop-blur">
             <AlertTriangle size={12} />
-            <span>实时状态同步异常，当前展示的是最近缓存</span>
+            <span>{t("quick.syncWarning")}</span>
           </div>
         )}
       </div>

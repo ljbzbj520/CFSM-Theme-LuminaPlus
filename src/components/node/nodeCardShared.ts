@@ -1,5 +1,6 @@
 // 大卡与紧凑卡共享的格式化和命中逻辑。
 
+import { t } from "@/i18n";
 import { formatUptimeDays, trimFixed } from "@/utils/format";
 import { latencyHeatColor, lossHeatColor } from "@/utils/metricTone";
 import type { PingOverviewBucket } from "@/types/cfsm";
@@ -18,15 +19,15 @@ export function formatCompactPercent(value: number) {
 
 /** 卡片到期文案:"余 X天";没填到期日期按「永久」显示。 */
 export function formatCompactExpire({ value, unit }: { value: string; unit: string }) {
-  if (value === "—") return "永久";
-  return unit ? `余 ${value}${unit}` : value;
+  if (value === "—") return t("card.noExpiry");
+  return unit ? t("card.expireLeft", { value, unit }) : value;
 }
 
 /** 非法或非正时长返回空串。 */
 export function formatCompactUptime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds <= 0) return "";
   const uptime = formatUptimeDays(seconds);
-  return `在线：${uptime.value}${uptime.unit}`;
+  return t("card.uptime", { value: uptime.value, unit: uptime.unit });
 }
 
 /** 区分已绑定但无样本与未配置 Ping。 */
@@ -36,14 +37,14 @@ export function pingEmptyLabels(
   pingError = false,
 ): { title: string; text: string } {
   if (hasHomepagePingBinding && pingLoading) {
-    return { title: "正在加载首页 Ping", text: "加载中" };
+    return { title: t("card.pingLoadingTitle"), text: t("card.pingLoading") };
   }
   if (hasHomepagePingBinding && pingError) {
-    return { title: "首页 Ping 加载失败", text: "加载失败" };
+    return { title: t("card.pingFailedTitle"), text: t("card.pingFailed") };
   }
   return hasHomepagePingBinding
-    ? { title: "暂无有效样本", text: "无样本" }
-    : { title: "未配置首页 Ping", text: "未配置" };
+    ? { title: t("card.pingNoSamplesTitle"), text: t("card.pingNoSamples") }
+    : { title: t("card.pingUnsetTitle"), text: t("card.pingUnset") };
 }
 
 /** 生成“Debian 12”这类简短系统标签。 */
@@ -56,8 +57,8 @@ export function formatOsLabel(osName: string, rawOs?: string | null): string {
 /** 节点卡片头部"查看实例详情"链接的 title 和 aria-label。 */
 export function nodeDetailLinkLabels(name: string, osName: string) {
   return {
-    title: `${osName} · 查看详情`,
-    ariaLabel: `查看 ${name} 详情，系统 ${osName}`,
+    title: t("card.detailTitle", { os: osName }),
+    ariaLabel: t("card.detailAria", { name, os: osName }),
   };
 }
 

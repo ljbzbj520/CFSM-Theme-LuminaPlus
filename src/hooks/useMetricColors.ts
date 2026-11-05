@@ -1,3 +1,4 @@
+import { type MessageKey } from "@/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { clearCssColorCache } from "@/components/node/CanvasStrip";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
@@ -24,29 +25,29 @@ export type MetricColorKey =
 
 type MetricColorGroup = "metric" | "speed" | "traffic";
 
-export const METRIC_COLOR_GROUPS: ReadonlyArray<{ id: MetricColorGroup; label: string }> = [
-  { id: "metric", label: "卡片配色" },
-  { id: "speed", label: "速率热力" },
-  { id: "traffic", label: "流量方向" },
+export const METRIC_COLOR_GROUPS: ReadonlyArray<{ id: MetricColorGroup; labelKey: MessageKey }> = [
+  { id: "metric", labelKey: "colors.groupMetric" },
+  { id: "speed", labelKey: "colors.groupSpeed" },
+  { id: "traffic", labelKey: "colors.groupTraffic" },
 ];
 
 export const METRIC_COLOR_META: ReadonlyArray<{
   key: MetricColorKey;
-  label: string;
+  labelKey: MessageKey;
   cssVar: string;
   group: MetricColorGroup;
 }> = [
-  { key: "cpu", label: "CPU", cssVar: "--progress-cpu", group: "metric" },
-  { key: "memory", label: "内存", cssVar: "--progress-memory", group: "metric" },
-  { key: "disk", label: "磁盘", cssVar: "--progress-disk", group: "metric" },
-  { key: "load", label: "负载", cssVar: "--progress-load", group: "metric" },
-  { key: "swap", label: "Swap", cssVar: "--progress-swap", group: "metric" },
-  { key: "speedIdle", label: "超低速", cssVar: "--speed-idle", group: "speed" },
-  { key: "speedLow", label: "低速", cssVar: "--speed-low", group: "speed" },
-  { key: "speedHigh", label: "高速", cssVar: "--speed-high", group: "speed" },
-  { key: "speedMax", label: "急速", cssVar: "--speed-max", group: "speed" },
-  { key: "trafficUp", label: "上行", cssVar: "--traffic-up", group: "traffic" },
-  { key: "trafficDown", label: "下行", cssVar: "--traffic-down", group: "traffic" },
+  { key: "cpu", labelKey: "colors.cpu", cssVar: "--progress-cpu", group: "metric" },
+  { key: "memory", labelKey: "metric.memory", cssVar: "--progress-memory", group: "metric" },
+  { key: "disk", labelKey: "metric.disk", cssVar: "--progress-disk", group: "metric" },
+  { key: "load", labelKey: "metric.load", cssVar: "--progress-load", group: "metric" },
+  { key: "swap", labelKey: "colors.swap", cssVar: "--progress-swap", group: "metric" },
+  { key: "speedIdle", labelKey: "colors.speedIdle", cssVar: "--speed-idle", group: "speed" },
+  { key: "speedLow", labelKey: "colors.speedLow", cssVar: "--speed-low", group: "speed" },
+  { key: "speedHigh", labelKey: "colors.speedHigh", cssVar: "--speed-high", group: "speed" },
+  { key: "speedMax", labelKey: "colors.speedMax", cssVar: "--speed-max", group: "speed" },
+  { key: "trafficUp", labelKey: "traffic.upload", cssVar: "--traffic-up", group: "traffic" },
+  { key: "trafficDown", labelKey: "traffic.download", cssVar: "--traffic-down", group: "traffic" },
 ];
 
 type MetricColors = Partial<Record<MetricColorKey, string>>;

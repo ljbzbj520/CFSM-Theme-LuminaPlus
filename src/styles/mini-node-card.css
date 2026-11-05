@@ -97,6 +97,12 @@
   flex: 0 0 auto;
 }
 
+/* V4 / V6 徽章在迷你卡里跟这一行的价格、标签同高同圆角（默认 22px，高出 2 像素）。 */
+.mini-node-chip-row .ip-stack-badge {
+  height: 20px;
+  border-radius: 6px;
+}
+
 .mini-node-tag-lane {
   display: flex;
   max-height: 20px;

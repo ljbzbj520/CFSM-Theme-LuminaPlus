@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useEffect, useMemo, useRef, useState } from "react";
 import UplotReact from "uplot-react";
 import type uPlot from "uplot";
@@ -295,12 +296,12 @@ export function PingChart({
   const taskLabels = useMemo(() => {
     const counts = new Map<string, number>();
     for (const task of tasks) {
-      const label = task.name || `任务 #${task.id}`;
+      const label = task.name || t("ping.taskN", { n: task.id });
       counts.set(label, (counts.get(label) ?? 0) + 1);
     }
     return new Map(
       tasks.map((task) => {
-        const baseLabel = task.name || `任务 #${task.id}`;
+        const baseLabel = task.name || t("ping.taskN", { n: task.id });
         const label = (counts.get(baseLabel) ?? 0) > 1 ? `${baseLabel} #${task.id}` : baseLabel;
         return [task.id, label] as const;
       }),
@@ -428,7 +429,7 @@ export function PingChart({
     if (!chartBundle) return [];
     return visibleTasks.map((task) => ({
       id: task.id,
-      label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
+      label: taskLabels.get(task.id) ?? t("ping.taskN", { n: task.id }),
       loss: chartBundle.loss[taskIndexById.get(task.id) ?? 0] ?? [],
     }));
   }, [chartBundle, taskIndexById, taskLabels, visibleTasks]);
@@ -472,12 +473,10 @@ export function PingChart({
     if (!Number.isFinite(seconds) || seconds <= 0) return null;
     const text =
       seconds >= 60
-        ? `${Number((seconds / 60).toFixed(seconds % 60 === 0 ? 0 : 1))} 分钟`
-        : `${Math.round(seconds)} 秒`;
-    return `每 ${text}一个采样点`;
+        ? t("duration.minutes", { n: Number((seconds / 60).toFixed(seconds % 60 === 0 ? 0 : 1)) })
+        : t("duration.seconds", { n: Math.round(seconds) });
+    return t("ping.interval", { interval: text });
   }, [sortedRecords]);
-  const panelDescription =
-    [coverageLabel, samplingLabel].filter(Boolean).join(" · ") || undefined;
 
   // 纵轴动态量程：支持用户手动选择最高值与最低值；未指定部分根据当前可见线路自适应计算。
   const yRange = useMemo<[number | null, number | null]>(() => {
@@ -519,7 +518,7 @@ export function PingChart({
             const raw = chartRef.current[taskIndex + 1]?.[idx] as number | null | undefined;
             const loss = lossRef.current[taskIndex]?.[idx] ?? null;
             return {
-              label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
+              label: taskLabels.get(task.id) ?? t("ping.taskN", { n: task.id }),
               raw: typeof raw === "number" && Number.isFinite(raw) ? raw : null,
               loss,
               color: taskColors.get(task.id) ?? colorForSeries(taskIndex, tasks.length),
@@ -566,7 +565,7 @@ export function PingChart({
       series: [
         { label: "time" },
         ...tasks.map((task, index) => ({
-          label: taskLabels.get(task.id) ?? `任务 #${task.id}`,
+          label: taskLabels.get(task.id) ?? t("ping.taskN", { n: task.id }),
           stroke: taskColors.get(task.id) ?? colorForSeries(index, tasks.length),
           width: 1.7,
           spanGaps: connectNulls,
@@ -578,7 +577,7 @@ export function PingChart({
         init: [
           (u) => {
             u.root.setAttribute("role", "img");
-            u.root.setAttribute("aria-label", `Ping 延迟历史图表，共 ${tasks.length} 条线路`);
+            u.root.setAttribute("aria-label", t("ping.chartAria", { n: tasks.length }));
           },
           tooltipHooks.onInit,
         ],
@@ -676,14 +675,14 @@ export function PingChart({
   };
 
   if (isLoading) {
-    return <InstanceChartLoading title="Ping 图表" />;
+    return <InstanceChartLoading title={t("ping.chartTitle")} />;
   }
 
   if (isError && !data?.records.length) {
     return (
-      <InstancePanel title="Ping 图表">
+      <InstancePanel title={t("ping.chartTitle")}>
         <div className="instance-empty">
-          <span>延迟历史加载失败</span>
+          <span>{t("ping.loadFailed")}</span>
           <button
             type="button"
             className="instance-toggle-button"
@@ -691,7 +690,7 @@ export function PingChart({
             disabled={isFetching}
             aria-busy={isFetching}
           >
-            {isFetching ? "重试中" : "重试"}
+            {isFetching ? t("common.retrying") : t("common.retry")}
           </button>
         </div>
       </InstancePanel>
@@ -700,9 +699,9 @@ export function PingChart({
 
   if (!data?.records.length) {
     return (
-      <InstancePanel title="Ping 图表">
+      <InstancePanel title={t("ping.chartTitle")}>
         <div className="instance-empty">
-          <span>暂无延迟记录</span>
+          <span>{t("ping.empty")}</span>
           <button
             type="button"
             className="instance-toggle-button"
@@ -711,7 +710,7 @@ export function PingChart({
             aria-busy={isFetching}
           >
             <RefreshCw size={14} aria-hidden />
-            {isFetching ? "刷新中" : "刷新"}
+            {isFetching ? t("common.refreshing") : t("common.refresh")}
           </button>
         </div>
       </InstancePanel>
@@ -719,54 +718,66 @@ export function PingChart({
   }
 
   return (
-    <InstancePanel title="Ping 图表" description={panelDescription}>
-      <div className="instance-ping-toolbar">
-        <SwitchToggle
-          label="丢包色带"
-          active={showLoss}
-          onToggle={() => setShowLoss((value) => !value)}
-          title="在图表上方按线路显示丢包率色带：越红丢得越多，空缺表示该时段没有采样。不受削峰平滑影响。注意：查询超过 1 小时时，后端按后台设置的采样点数返回（可选 60/120/180/240），点数固定而区间不固定，所以区间越长采样越粗；持续一两分钟的短促丢包可能整段没被采到 —— 同一次丢包在 1 小时图里看得见、在 1 天图里消失就是这个原因，调大后台的采样点数可缓解。"
-        />
-        <SwitchToggle
-          label="削峰平滑"
-          active={cutPeak}
-          onToggle={() => setCutPeak((value) => !value)}
-          title="对尖峰值做轻度平滑，仅影响图线显示"
-        />
-        <SwitchToggle
-          label="断点连线"
-          active={connectNulls}
-          onToggle={() => setConnectNulls((value) => !value)}
-          title="关闭：如实显示中断/丢包断点；开启：跨过所有空缺连成完整曲线（更好看，但看不出掉线）。注：偶尔漏一两次采样的小空缺始终自动桥接，不受此开关影响。"
-        />
-        <button
-          type="button"
-          className="instance-toggle-button"
-          data-active={hasCustomYRange ? "true" : isYRangeOpen ? "true" : "false"}
-          onClick={() => setIsYRangeOpen((prev) => !prev)}
-          title="手动设置纵坐标最高值和最低值，防止突发尖峰压扁曲线"
-        >
-          <SlidersHorizontal size={14} aria-hidden />
-          {hasCustomYRange
-            ? `量程: ${customYRange.min ?? 0}~${customYRange.max ?? "自动"}ms`
-            : "纵轴量程"}
-        </button>
-        <button type="button" className="instance-toggle-button" onClick={toggleAll}>
-          {hiddenTasks.size === 0 ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
-          {hiddenTasks.size === 0 ? "隐藏全部" : "显示全部"}
-        </button>
-        <button
-          type="button"
-          className="instance-toggle-button"
-          onClick={refetchAll}
-          disabled={isFetching}
-          aria-busy={isFetching}
-        >
-          <RefreshCw size={14} aria-hidden />
-          {isFetching ? "刷新中" : isError ? "刷新失败，重试" : "刷新"}
-        </button>
-      </div>
-
+    <InstancePanel
+      title={t("ping.chartTitle")}
+      className="instance-chart-panel"
+      // 覆盖范围、采样间隔和几个开关并进标题行右侧（和「系统资源」同一个写法），
+      // 原来说明一行、开关一行，图上面空出一大截（站长 2026-10-15）。
+      aside={
+        <div className="instance-chart-headmeta">
+          {(coverageLabel || samplingLabel) && (
+            <div className="instance-chart-meta" aria-label={t("chart.rangeLabel")}>
+              {coverageLabel && <span><strong>{coverageLabel}</strong></span>}
+              {samplingLabel && <span>{samplingLabel}</span>}
+            </div>
+          )}
+          <SwitchToggle
+            label={t("ping.lossStrip")}
+            active={showLoss}
+            onToggle={() => setShowLoss((value) => !value)}
+            title={t("ping.lossStripTitle")}
+          />
+          <SwitchToggle
+            label={t("ping.cutPeak")}
+            active={cutPeak}
+            onToggle={() => setCutPeak((value) => !value)}
+            title={t("ping.cutPeakTitle")}
+          />
+          <SwitchToggle
+            label={t("chart.connectGaps")}
+            active={connectNulls}
+            onToggle={() => setConnectNulls((value) => !value)}
+            title={t("ping.connectGapsTitle")}
+          />
+          <button
+            type="button"
+            className="instance-toggle-button"
+            data-active={hasCustomYRange ? "true" : isYRangeOpen ? "true" : "false"}
+            onClick={() => setIsYRangeOpen((prev) => !prev)}
+            title="手动设置纵坐标最高值和最低值，防止突发尖峰压扁曲线"
+          >
+            <SlidersHorizontal size={14} aria-hidden />
+            {hasCustomYRange
+              ? `量程: ${customYRange.min ?? 0}~${customYRange.max ?? "自动"}ms`
+              : "纵轴量程"}
+          </button>
+          <button type="button" className="instance-toggle-button" onClick={toggleAll}>
+            {hiddenTasks.size === 0 ? <EyeOff size={14} aria-hidden /> : <Eye size={14} aria-hidden />}
+            {hiddenTasks.size === 0 ? t("ping.hideAll") : t("ping.showAll")}
+          </button>
+          <button
+            type="button"
+            className="instance-toggle-button"
+            onClick={refetchAll}
+            disabled={isFetching}
+            aria-busy={isFetching}
+          >
+            <RefreshCw size={14} aria-hidden />
+            {isFetching ? t("common.refreshing") : isError ? t("ping.refreshFailed") : t("common.refresh")}
+          </button>
+        </div>
+      }
+    >
       {isYRangeOpen && (
         <div className="instance-yrange-panel">
           <div className="instance-yrange-row">
@@ -846,7 +857,6 @@ export function PingChart({
           </p>
         </div>
       )}
-
       <div className="instance-ping-tasks">
         {taskStats.map((task) => {
           const visible = !hiddenTasks.has(task.id);
@@ -860,14 +870,26 @@ export function PingChart({
               onClick={() => toggleTask(task.id)}
               style={{ borderColor: visible ? task.color : "var(--border-subtle)" }}
               title={[
-                taskLabels.get(task.id) ?? `任务 #${task.id}`,
-                `当前 ${task.latest != null ? `${task.latest.toFixed(1)} ms` : "—"} | 均值 ${task.avg != null ? `${task.avg.toFixed(1)} ms` : "—"} | 丢包 ${task.loss.toFixed(1)}%`,
-                `p99 ${task.p99 != null ? `${task.p99.toFixed(0)} ms` : "—"} | 抖动 ${task.volatility != null ? task.volatility.toFixed(2) : "—"}`,
-                `min ${task.min != null ? `${task.min.toFixed(0)} ms` : "—"} | max ${task.max != null ? `${task.max.toFixed(0)} ms` : "—"} | 样本 ${task.total ?? 0} | 间隔 ${task.interval}s`,
+                taskLabels.get(task.id) ?? t("ping.taskN", { n: task.id }),
+                t("ping.taskStats1", {
+                  latest: task.latest != null ? `${task.latest.toFixed(1)} ms` : "—",
+                  avg: task.avg != null ? `${task.avg.toFixed(1)} ms` : "—",
+                  loss: task.loss.toFixed(1),
+                }),
+                t("ping.taskStats2", {
+                  p99: task.p99 != null ? `${task.p99.toFixed(0)} ms` : "—",
+                  jitter: task.volatility != null ? task.volatility.toFixed(2) : "—",
+                }),
+                t("ping.taskStats3", {
+                  min: task.min != null ? `${task.min.toFixed(0)} ms` : "—",
+                  max: task.max != null ? `${task.max.toFixed(0)} ms` : "—",
+                  total: task.total ?? 0,
+                  interval: task.interval,
+                }),
               ].join("\n")}
             >
               <span className="instance-ping-task-dot" style={{ background: task.color }} aria-hidden />
-              <span className="instance-ping-task-name">{taskLabels.get(task.id) ?? `任务 #${task.id}`}</span>
+              <span className="instance-ping-task-name">{taskLabels.get(task.id) ?? t("ping.taskN", { n: task.id })}</span>
               <span
                 className="instance-ping-task-primary"
                 style={{
@@ -914,7 +936,7 @@ export function PingChart({
             <ChartTooltip tooltip={tooltip} />
           </>
         ) : (
-          <div className="instance-empty">当前已隐藏全部线路，点击上方按钮可恢复显示</div>
+          <div className="instance-empty">{t("ping.allHidden")}</div>
         )}
       </div>
     </InstancePanel>

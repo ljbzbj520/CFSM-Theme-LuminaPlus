@@ -23,10 +23,11 @@ const appShellSource = readFileSync(
 const routerSource = readFileSync(new URL("../../router.tsx", import.meta.url), "utf8");
 
 describe("home responsive layout contracts", () => {
-  it("uses an explicit expanded state through tablet widths without :has()", () => {
+  it("hides the site name only when the expanded bar actually covers it, without :has()", () => {
     expect(homeCss).not.toContain(":has(");
-    expect(homeCss).toMatch(/@media \(max-width: 1023px\)[\s\S]*\.home-dashboard\.is-controls-expanded \.home-brand/);
+    expect(homeCss).toContain(".home-dashboard.is-controls-expanded .home-brand");
     expect(homeSource).toContain("onExpandedChange={setControlsExpanded}");
+    expect(homeSource).toContain("controlsExpanded && brandCovered");
   });
 
   it("keeps both horizontal edges inside viewport safe areas", () => {

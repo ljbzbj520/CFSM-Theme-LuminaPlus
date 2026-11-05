@@ -82,6 +82,28 @@ function persistAppearance(value: Appearance) {
   writeStorageItem(APPEARANCE_STORAGE_KEY, JSON.stringify(value));
 }
 
+function removeStorageItem(key: string) {
+  try {
+    localStorage.removeItem(key);
+  } catch {}
+}
+
+/** 忘掉这个浏览器在快捷栏上点过的外观，回到站点的「默认外观」。 */
+function clearExplicitAppearance() {
+  hasExplicitAppearancePreference = false;
+  removeStorageItem(APPEARANCE_STORAGE_KEY);
+}
+
+/**
+ * 设置页改「默认外观」时调用：改的人当然想马上看到效果，所以这个浏览器以前在快捷栏上点过的
+ * 外观一起作废（站长 2026-10-15：设置里选了深色，页面还是浅色 —— 本机点过「浅色」压着）。
+ */
+export function followDefaultAppearance(value: Appearance) {
+  clearExplicitAppearance();
+  persistDefaultAppearance(value);
+  commit({ appearance: value });
+}
+
 function persistDefaultAppearance(value: Appearance) {
   writeStorageItem(APPEARANCE_DEFAULT_STORAGE_KEY, JSON.stringify(value));
 }
@@ -204,11 +226,15 @@ export function usePreferences() {
 
   useEffect(() => {
     if (!themeSettings.isReady) return;
+    // 快捷栏里的外观按钮被关掉后，访客没处改自己的选择了；以前点过的不能一直压着站点默认。
+    if (!themeSettings.quickShowAppearance && hasExplicitAppearancePreference) {
+      clearExplicitAppearance();
+    }
     if (hasExplicitAppearancePreference) return;
     const defaultAppearance = themeSettings.defaultAppearance;
     persistDefaultAppearance(defaultAppearance);
     commit({ appearance: defaultAppearance });
-  }, [themeSettings.defaultAppearance, themeSettings.isReady]);
+  }, [themeSettings.defaultAppearance, themeSettings.isReady, themeSettings.quickShowAppearance]);
 
   const setAppearance = useCallback((a: Appearance) => {
     hasExplicitAppearancePreference = true;

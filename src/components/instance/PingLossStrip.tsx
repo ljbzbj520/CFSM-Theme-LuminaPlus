@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useEffect, useRef } from "react";
 import { lossHeatColor } from "@/utils/metricTone";
 import { resolveLossCellSpans } from "@/utils/pingMetrics";
@@ -149,7 +150,13 @@ function LossRowCanvas({
     <canvas
       ref={canvasRef}
       role="img"
-      aria-label={`${label} 丢包${average == null ? "无数据" : ` 平均 ${average.toFixed(1)}%`}`}
+      aria-label={t("lossStrip.aria", {
+        label,
+        summary:
+          average == null
+            ? t("lossStrip.noData")
+            : t("lossStrip.average", { value: average.toFixed(1) }),
+      })}
       style={{ width, height: ROW_HEIGHT }}
     />
   );

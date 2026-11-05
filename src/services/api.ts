@@ -37,6 +37,7 @@ import {
   withReportTimestamp,
 } from "@/services/cfsm/mappers";
 import { seedMeasuredHistory } from "@/services/pingLiveStore";
+import { applySiteLanguage } from "@/i18n";
 import { resolvePreferredAppearance } from "@/utils/themeSettings";
 
 export { ApiRequestError, DatabaseUpgradeRequiredError } from "@/services/cfsm/http";
@@ -159,6 +160,8 @@ export async function saveThemeOptions(
  */
 export async function getPublic(options?: RequestOptions): Promise<PublicConfig> {
   const config = await getSiteConfig(options);
+  // 内容要等配置到手才渲染（AppShell 先只显示加载圈），在这里定语言，页面一出来就是对的语言。
+  applySiteLanguage(config.default_language);
   return {
     sitename: config.site_title,
     description: "",

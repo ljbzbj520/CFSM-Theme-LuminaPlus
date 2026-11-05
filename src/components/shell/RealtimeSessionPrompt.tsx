@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useEffect, useId, useState, useSyncExternalStore } from "react";
 import { Unplug } from "lucide-react";
 import { usePublicConfig } from "@/hooks/usePublicConfig";
@@ -49,9 +50,10 @@ export function RealtimeSessionPrompt() {
     <section className="realtime-session-prompt" aria-labelledby={titleId} aria-live="polite">
       <Unplug size={16} strokeWidth={2} className="realtime-session-prompt-icon" aria-hidden />
       <div className="realtime-session-prompt-body">
-        <strong id={titleId}>实时连接已达到时限并断开</strong>
+        <strong id={titleId}>{t("session.title")}</strong>
         <p>
-          {minutes > 0 ? `站点限制单次实时连接 ${minutes} 分钟，` : ""}页面停在断开前的数据。
+          {minutes > 0 ? t("session.limit", { n: minutes }) : ""}
+          {t("session.frozen")}
         </p>
       </div>
       <div className="realtime-session-prompt-actions">
@@ -60,14 +62,14 @@ export function RealtimeSessionPrompt() {
           className="control-button realtime-session-prompt-button"
           onClick={() => setDismissed(true)}
         >
-          关闭
+          {t("common.close")}
         </button>
         <button
           type="button"
           className="control-button realtime-session-prompt-button is-primary"
           onClick={resumeRealtimeSession}
         >
-          继续接收
+          {t("session.resume")}
         </button>
       </div>
     </section>

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useState } from "react";
 import { hostAssetUrl } from "@/services/cfsm/config";
 import { getDisplayRegionCode } from "@/utils/geo";
@@ -29,7 +30,7 @@ export function Flag({ region, size = 14 }: FlagProps) {
   // 旗帜由后端默认皮肤提供，主题不打包（见 theme-develop.md 的主题构建产物约定）。
   // 后端的文件名是小写的。
   const src = hostAssetUrl(`/flags/${flagCode.toLowerCase()}.svg`);
-  const alt = `地区旗帜: ${flagCode}`;
+  const alt = t("flag.alt", { code: flagCode });
 
   if (failedSrc === src) {
     return (

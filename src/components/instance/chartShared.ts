@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import type uPlot from "uplot";
 
@@ -10,6 +11,72 @@ export const CHART_PALETTE = {
   success: "#61c08f",
   warning: "#d4a54a",
 } as const;
+
+function parseRgb(color: string): [number, number, number] | null {
+  const value = color.trim();
+  const hex = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(value);
+  if (hex) return [parseInt(hex[1], 16), parseInt(hex[2], 16), parseInt(hex[3], 16)];
+  const rgb = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i.exec(value);
+  if (rgb) return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  return null;
+}
+
+/** 给图表线色加透明度（填充用）。颜色可能来自 CSS 变量（hex 或 rgb()），不能再拼 `${hex}22`。 */
+export function chartAlpha(color: string, alpha: number): string {
+  const rgb = parseRgb(color);
+  return rgb ? `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, ${alpha})` : color;
+}
+
+/**
+ * 刻度要几位小数：能把每个刻度值原样写出来的最少位数（最多 3 位）。原来按纵轴跨度粗分档，
+ * 负载只有 0.01~0.02 时两条刻度都写成「0.0」（站长 2026-10-15 截图）。
+ */
+export function axisDecimals(splits: number[]): number {
+  for (let decimals = 0; decimals < 3; decimals += 1) {
+    const factor = 10 ** decimals;
+    if (splits.every((value) => Math.abs(Math.round(value * factor) / factor - value) < 1e-9)) {
+      return decimals;
+    }
+  }
+  return 3;
+}
+
+/** 1 / 2 / 2.5 / 5 × 10ⁿ 里不超过 limit 的最大值；整数轴跳过非整数（最小 1）。 */
+function niceStepAtMost(limit: number, integer: boolean): number {
+  if (!(limit > 0)) return integer ? 1 : 0;
+  const base = 10 ** Math.floor(Math.log10(limit));
+  for (const mult of [5, 2.5, 2, 1]) {
+    const step = mult * base;
+    if (step <= limit * (1 + 1e-9) && (!integer || Number.isInteger(step))) return step;
+  }
+  return integer ? 1 : base;
+}
+
+/** 刻度值按什么单位取整：普通十进制、网速（按比特显示的十进制）、字节速率（1024 进制）。 */
+export type AxisTickUnit = "decimal" | "bits" | "binary";
+
+/**
+ * 从 0 起的纵轴刻度，0 以上至少两档（站长 2026-10-19：网络、连接数图上只有一个刻度，看不出量级）。
+ * 步长取不超过 max / 2 的「好看」数，所以 0 以上总有 2~4 档；网速按比特、磁盘 IO 按 1024 取整，
+ * 刻度文字才会是 10 Mbps、25 KB/s 这样的整数。
+ */
+export function zeroBasedTicks(
+  max: number,
+  { integer = false, unit = "decimal" }: { integer?: boolean; unit?: AxisTickUnit } = {},
+): number[] {
+  if (!(max > 0) || !Number.isFinite(max)) return [0];
+  let scale = 1;
+  if (unit === "bits") scale = 8;
+  if (unit === "binary") scale = 1 / 1024 ** Math.max(0, Math.floor(Math.log(max) / Math.log(1024)));
+  const top = max * scale;
+  const step = niceStepAtMost(top / 2, integer);
+  if (!(step > 0)) return [0];
+  const ticks: number[] = [];
+  for (let index = 0; index * step <= top * (1 + 1e-9); index += 1) {
+    ticks.push((index * step) / scale);
+  }
+  return ticks;
+}
 
 // 备用定性色板（仅缺少总数时用）；正常走下面的 OKLCH 生成。
 const CHART_SERIES_COLORS = [
@@ -75,24 +142,19 @@ interface TimeRangeOption {
 // load 和 ping 共用同一套历史区间预设；唯一区别是是否在前面加 "实时" 选项，这由
 // buildHistoryRangeOptions 的 includeRealtime 标志处理，而非改预设列表本身。
 // 取值必须落在 CF-Server-Monitor `/api/history/all` 支持的档位上（最长 7 天）。
-const TIME_RANGE_OPTIONS: TimeRangeOption[] = [
-  { label: "1 小时", value: 1 },
-  { label: "6 小时", value: 6 },
-  { label: "12 小时", value: 12 },
-  { label: "1 天", value: 24 },
-  { label: "2 天", value: 48 },
-  { label: "7 天", value: 168 },
-];
+const TIME_RANGE_HOURS = [1, 6, 12, 24, 48, 168] as const;
 
-const PING_TIME_RANGE_OPTIONS: TimeRangeOption[] = [...TIME_RANGE_OPTIONS];
+/** 档位名跟界面语言走，每次现算。 */
+function timeRangeOptions(): TimeRangeOption[] {
+  return TIME_RANGE_HOURS.map((value) => ({ label: formatRangeLabel(value), value }));
+}
 
 function formatRangeLabel(hours: number) {
   if (hours % 24 === 0) {
-    const days = hours / 24;
-    return `${days} 天`;
+    return t("duration.days", { n: hours / 24 });
   }
 
-  return `${hours} 小时`;
+  return t("duration.hours", { n: hours });
 }
 
 function buildHistoryRangeOptions(
@@ -100,7 +162,7 @@ function buildHistoryRangeOptions(
   maxHours: number | null | undefined,
   includeRealtime: boolean,
 ) {
-  const options = includeRealtime ? [{ label: "实时", value: 0 }] : [];
+  const options = includeRealtime ? [{ label: t("range.realtime"), value: 0 }] : [];
   if (!Number.isFinite(maxHours) || !maxHours || maxHours <= 0) {
     return [...options, ...presets];
   }
@@ -123,15 +185,15 @@ function buildHistoryRangeOptions(
 }
 
 export function buildLoadTimeRangeOptions(maxHours: number | null | undefined) {
-  return buildHistoryRangeOptions(TIME_RANGE_OPTIONS, maxHours, true);
+  return buildHistoryRangeOptions(timeRangeOptions(), maxHours, true);
 }
 
 export function buildPingTimeRangeOptions(maxHours: number | null | undefined) {
   if (!Number.isFinite(maxHours) || !maxHours || maxHours <= 0) {
-    return [...PING_TIME_RANGE_OPTIONS];
+    return timeRangeOptions();
   }
   const safeMaxHours = Math.floor(maxHours);
-  return PING_TIME_RANGE_OPTIONS.filter((option) => option.value <= safeMaxHours);
+  return timeRangeOptions().filter((option) => option.value <= safeMaxHours);
 }
 
 const GRID_CHART_DEFAULT = { w: 320, h: 132 };

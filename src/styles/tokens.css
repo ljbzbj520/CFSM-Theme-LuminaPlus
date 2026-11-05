@@ -29,7 +29,9 @@
   --progress-bg: #e4e4e7;
   --progress-cpu: #3b82f6;
   --progress-memory: #8b5cf6;
-  --progress-swap: #6366f1;
+  /* Swap 首页没用到，只画在详情页内存图里，是那张图的「第二条线」：和其他图的第二条线一样用琥珀色
+     （原来的靛蓝和内存紫几乎分不开）。 */
+  --progress-swap: #f59e0b;
   --progress-disk: #e97b35;
   --progress-network: #10b981;
   --progress-load: #ec4899;
@@ -118,7 +120,7 @@
   --progress-bg: color-mix(in srgb, #343b45, #24282e calc(var(--dark-depth, 0) * 1%));
   --progress-cpu: #539bf5;
   --progress-memory: #b083f0;
-  --progress-swap: #986ee2;
+  --progress-swap: #fbbf24;
   --progress-disk: #e0823d;
   --progress-network: #57ab5a;
   --progress-load: #e275ad;

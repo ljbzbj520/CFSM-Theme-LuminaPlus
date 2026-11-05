@@ -14,6 +14,8 @@ function record(time: string, overrides: Partial<LoadRecord> = {}): LoadRecord {
     swap: 0,
     swap_total: 0,
     load: 0,
+    load5: 0,
+    load15: 0,
     temp: 0,
     disk: 0,
     disk_total: 0,

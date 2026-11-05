@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import type { PingRecord } from "@/types/cfsm";
 
 /**
@@ -120,9 +121,9 @@ export function formatPingTooltipValue(
   lossPct: number | null,
 ): string {
   const hasLoss = lossPct != null && lossPct > 0;
-  if (latencyMs == null) return hasLoss ? `丢包 ${formatPingLoss(lossPct)}` : "—";
+  if (latencyMs == null) return hasLoss ? t("ping.lossValue", { value: formatPingLoss(lossPct) }) : "—";
   const latency = `${latencyMs.toFixed(1)} ms`;
-  return hasLoss ? `丢包 ${formatPingLoss(lossPct)} · ${latency}` : latency;
+  return hasLoss ? `${t("ping.lossValue", { value: formatPingLoss(lossPct) })} · ${latency}` : latency;
 }
 
 /** 升序数组里离 value 最近的下标。 */

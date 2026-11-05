@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { CircleDollarSign, X } from "lucide-react";
@@ -51,8 +52,8 @@ function AssetLink() {
     <Link
       to="/assets"
       className="overview-card-action"
-      aria-label="打开资产统计页"
-      title="资产统计"
+      aria-label={t("home.openAssets")}
+      title={t("home.assetsTitle")}
     >
       <CircleDollarSign size={15} aria-hidden />
     </Link>
@@ -173,11 +174,11 @@ export function RenewalReminder({
         ref={triggerRef}
         type="button"
         className="overview-card-action renewal-reminder-trigger"
-        aria-label={`${visibleReminders.length} 个续费提醒`}
+        aria-label={t("renewal.count", { n: visibleReminders.length })}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        title={`${visibleReminders.length} 个续费提醒`}
+        title={t("renewal.count", { n: visibleReminders.length })}
         onClick={() => setOpen((value) => !value)}
       >
         <CircleDollarSign size={15} aria-hidden />
@@ -194,17 +195,17 @@ export function RenewalReminder({
           <header className="renewal-reminder-head">
             <div>
               <div className="renewal-reminder-title-line">
-                <h2 id={titleId}>续费提醒</h2>
+                <h2 id={titleId}>{t("renewal.title")}</h2>
                 <span className="renewal-reminder-count">{visibleReminders.length}</span>
               </div>
-              <p>{visibleReminders.length} 台节点将在 {warningDays} 天内到期</p>
+              <p>{t("renewal.summary", { n: visibleReminders.length, days: warningDays })}</p>
             </div>
             <button
               ref={closeRef}
               type="button"
               className="renewal-reminder-close"
-              aria-label="关闭续费提醒"
-              title="关闭"
+              aria-label={t("renewal.closeLabel")}
+              title={t("common.close")}
               onClick={closeAndRestoreFocus}
             >
               <X size={15} aria-hidden />
@@ -225,23 +226,23 @@ export function RenewalReminder({
               </div>
             ))}
             {hiddenCount > 0 && (
-              <p className="renewal-reminder-more">还有 {hiddenCount} 台临期节点</p>
+              <p className="renewal-reminder-more">{t("renewal.more", { n: hiddenCount })}</p>
             )}
           </div>
 
           <footer className="renewal-reminder-actions">
             <Link to="/assets" className="renewal-reminder-detail" onClick={() => setOpen(false)}>
-              查看详情
+              {t("common.viewDetails")}
             </Link>
             <button type="button" className="renewal-reminder-later" onClick={snooze}>
-              {RENEWAL_SNOOZE_DAYS} 天后提醒
+              {t("renewal.snooze", { days: RENEWAL_SNOOZE_DAYS })}
             </button>
             <button
               type="button"
               className="renewal-reminder-dismiss"
               onClick={dismissCurrentCycles}
             >
-              本周期不再提醒
+              {t("renewal.dismissCycle")}
             </button>
           </footer>
         </section>

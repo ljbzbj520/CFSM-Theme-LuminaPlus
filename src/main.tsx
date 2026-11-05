@@ -3,12 +3,16 @@ import { createRoot } from "react-dom/client";
 import "@fontsource-variable/inter";
 import "./styles/index.css";
 import { App } from "./App";
+import { initLanguage } from "./i18n";
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("#root not found");
 const root = rootEl;
 
 async function bootstrap() {
+  // 站点配置到手之前（加载圈、读配置失败、人机验证）先按访客选过的语言 / 浏览器语言显示；
+  // 配置一到按后台「默认语言」重新定，见 api.ts 的 getPublic。
+  initLanguage();
   if (
     import.meta.env.DEV &&
     new URLSearchParams(window.location.search).get("mock") === "1"

@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import {
   useEffect,
   useId,
@@ -120,8 +121,8 @@ export function InstanceSwitcher({ currentUuid }: { currentUuid: string }) {
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
-        aria-label="切换服务器"
-        title="切换服务器"
+        aria-label={t("switcherServer.label")}
+        title={t("switcherServer.label")}
         onClick={() => setOpen((value) => !value)}
         onKeyDown={(event) => {
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -137,7 +138,7 @@ export function InstanceSwitcher({ currentUuid }: { currentUuid: string }) {
           id={listId}
           className="instance-switcher-panel"
           role="listbox"
-          aria-label="服务器"
+          aria-label={t("switcherServer.list")}
           ref={listRef}
           onKeyDown={handleListKeyDown}
         >
@@ -146,7 +147,11 @@ export function InstanceSwitcher({ currentUuid }: { currentUuid: string }) {
             const status =
               node.online === true ? "online" : node.online === false ? "offline" : "unknown";
             const statusLabel =
-              node.online === true ? "在线" : node.online === false ? "离线" : "状态未知";
+              node.online === true
+                ? t("status.online")
+                : node.online === false
+                  ? t("status.offline")
+                  : t("status.unknown");
             return (
               <button
                 key={node.uuid}

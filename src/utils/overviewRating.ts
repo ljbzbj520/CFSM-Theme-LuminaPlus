@@ -1,3 +1,5 @@
+import { t } from "@/i18n";
+
 export type OverviewRatingKind = "traffic" | "bandwidth" | "asset";
 
 export interface OverviewRating {
@@ -8,21 +10,20 @@ export interface OverviewRating {
 const GB = 1024 ** 3;
 const MBPS_IN_BYTES_PER_SECOND = 1_000_000 / 8;
 
-const DEFAULT_LABELS: Record<OverviewRatingKind, readonly string[]> = {
-  traffic: ["轻量", "常规", "重度", "海量"],
-  bandwidth: ["闲置", "轻载", "活跃", "爆发"],
-  asset: ["入门", "标准", "顶级", "富佬"],
-};
+/** 站长没自定义时的四档名称（逗号分隔），跟界面语言走。 */
+function defaultLabels(kind: OverviewRatingKind): readonly string[] {
+  return t(`rating.${kind}`).split(",");
+}
 
 export function getDefaultOverviewRatingLabelText(kind: OverviewRatingKind) {
-  return DEFAULT_LABELS[kind].join(",");
+  return defaultLabels(kind).join(",");
 }
 
 export function normalizeOverviewRatingLabels(
   kind: OverviewRatingKind,
   customLabels: string | null | undefined,
 ) {
-  const fallback = DEFAULT_LABELS[kind];
+  const fallback = defaultLabels(kind);
   const custom = String(customLabels ?? "")
     .split(",")
     .map((label) => label.trim())

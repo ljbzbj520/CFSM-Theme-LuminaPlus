@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useId, type ReactNode } from "react";
 import { useVersionInfo } from "@/hooks/useVersionInfo";
 import { formatVersionLabel } from "@/utils/versionCompare";
@@ -113,7 +114,7 @@ function UpdateBadge({
         rel="noopener noreferrer"
         aria-describedby={hintId}
       >
-        新版 {next}
+        {t("footer.newVersion", { version: next })}
       </a>
       <HintBubble id={hintId}>{current ? `${formatVersionLabel(current)} → ${next}` : next}</HintBubble>
     </span>

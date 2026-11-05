@@ -1,3 +1,6 @@
+import { t } from "@/i18n";
+
+// 与后端 computeUsedByType 保持一致，空或未知类型按 max 处理。
 export interface TrafficDisplay {
   fraction: number;
   color: string;
@@ -6,6 +9,8 @@ export interface TrafficDisplay {
   typeLabel: string;
   resetLabel?: string;
   resetDays?: number | null;
+  /** 悬停提示：已用 / 总量 / 剩余，下一行写已用量怎么算（原来是「流量阈值 · 仅上行」，像在介绍两项指标）。 */
+  tooltip: string;
 }
 
 function nonNegative(value: number): number {
@@ -59,19 +64,20 @@ export function resolveTrafficUsage(
   return { used, limit, unlimited, remaining, fraction };
 }
 
+/** 已用量的计算方式，一句话说清（悬停提示的第二行）。 */
 export function trafficTypeLabel(type: string | null | undefined): string {
   switch ((type ?? "").trim().toLowerCase()) {
     case "up":
-      return "仅上行";
+      return t("trafficType.up");
     case "down":
-      return "仅下行";
+      return t("trafficType.down");
     case "sum":
-      return "上行+下行";
+      return t("trafficType.sum");
     case "min":
-      return "上下取小";
+      return t("trafficType.min");
     case "max":
     default:
-      return "上下取大";
+      return t("trafficType.max");
   }
 }
 

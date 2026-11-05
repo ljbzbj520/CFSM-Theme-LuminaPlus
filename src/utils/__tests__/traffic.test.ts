@@ -67,16 +67,16 @@ describe("resolveTrafficUsage", () => {
 
 describe("trafficTypeLabel", () => {
   it("labels each known type", () => {
-    expect(trafficTypeLabel("up")).toBe("仅上行");
-    expect(trafficTypeLabel("down")).toBe("仅下行");
-    expect(trafficTypeLabel("sum")).toBe("上行+下行");
-    expect(trafficTypeLabel("min")).toBe("上下取小");
-    expect(trafficTypeLabel("max")).toBe("上下取大");
+    expect(trafficTypeLabel("up")).toBe("只计上行，下行不算");
+    expect(trafficTypeLabel("down")).toBe("只计下行，上行不算");
+    expect(trafficTypeLabel("sum")).toBe("上行、下行都算");
+    expect(trafficTypeLabel("min")).toBe("上行、下行取较小的一边");
+    expect(trafficTypeLabel("max")).toBe("上行、下行取较大的一边");
   });
 
   it("falls back to max label for empty/unknown", () => {
-    expect(trafficTypeLabel("")).toBe("上下取大");
-    expect(trafficTypeLabel(undefined)).toBe("上下取大");
+    expect(trafficTypeLabel("")).toBe("上行、下行取较大的一边");
+    expect(trafficTypeLabel(undefined)).toBe("上行、下行取较大的一边");
   });
 });
 

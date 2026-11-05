@@ -331,7 +331,7 @@ function buildHistory(serverId: string, hours: number) {
       loss_node_2: i % 23 === 0 ? 8 : 0,
       loss_node_3: false,
       loss_node_4: null,
-      load_avg: "0.42 0.38 0.31",
+      load_avg: `${(0.6 + Math.sin(phase) * 0.4).toFixed(2)} ${(0.55 + Math.sin(phase - 0.6) * 0.25).toFixed(2)} ${(0.5 + Math.sin(phase - 1.2) * 0.12).toFixed(2)}`,
       kernel_version: server.kernel_version,
     });
   }
@@ -416,6 +416,8 @@ export function installDevMockApi() {
         is_public: true,
         authorization: loggedIn,
         preferred_theme: "auto",
+        // 本地看多语言：地址里加 `&lang=en` / `es` / `zh` / `auto`，相当于后台「默认语言」。
+        default_language: new URLSearchParams(window.location.search).get("lang") ?? "zh",
         frontend_ws_timeout_minutes: 0,
         turnstile_enabled: MOCK_TURNSTILE,
         turnstile_login_enabled: false,

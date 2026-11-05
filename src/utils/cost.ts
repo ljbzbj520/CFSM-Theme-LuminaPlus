@@ -1,3 +1,4 @@
+import { compareText, t } from "@/i18n";
 import type { NodeInfo } from "@/types/cfsm";
 import { normalizeBillingCycle } from "@/utils/billing";
 import { fetchWithTimeout } from "@/utils/abort";
@@ -93,6 +94,8 @@ interface CostSummaryDetail {
   premiumRemainingCny: number;
   billingCycleDays: number;
   counted: boolean;
+  /** 没计入统计的原因，判断逻辑用它；`note` 是给人看的文案（跟界面语言走）。 */
+  kind: "counted" | "ignored" | "free" | "missingRate";
   note: string;
 }
 
@@ -470,7 +473,7 @@ export function calculateCostSummary(
     );
     const baseDetail = {
       uuid: node.uuid,
-      name: String(name || "未命名服务器"),
+      name: String(name || t("cost.unnamed")),
       region: String(node.region || ""),
       expiredAt: String(node.expired_at || ""),
       weight: Number(node.weight) || 0,
@@ -493,7 +496,8 @@ export function calculateCostSummary(
         premiumMonthlyCny: 0,
         premiumRemainingCny: 0,
         counted: false,
-        note: "已忽略",
+        kind: "ignored",
+        note: t("cost.noteIgnored"),
       });
       continue;
     }
@@ -506,7 +510,8 @@ export function calculateCostSummary(
       details.push({
         ...baseDetail,
         counted: false,
-        note: "免费",
+        kind: "free",
+        note: t("cost.noteFree"),
       });
       continue;
     }
@@ -519,7 +524,8 @@ export function calculateCostSummary(
       details.push({
         ...baseDetail,
         counted: false,
-        note: "汇率缺失",
+        kind: "missingRate",
+        note: t("cost.noteMissingRate"),
       });
       continue;
     }
@@ -543,6 +549,7 @@ export function calculateCostSummary(
       monthlyCny: monthly,
       remainingCny: remaining,
       counted: true,
+      kind: "counted",
       note: "",
     });
   }
@@ -557,7 +564,7 @@ export function calculateCostSummary(
     effectiveMonthlyCny: monthlyCny + premiumMonthlyTotalCny,
     actualRemainingCny: remainingCny + premiumRemainingTotalCny,
     details: details.sort(
-      (a, b) => a.weight - b.weight || a.name.localeCompare(b.name, "zh-CN"),
+      (a, b) => a.weight - b.weight || compareText(a.name, b.name),
     ),
   };
 }
@@ -587,7 +594,7 @@ export function calculateCostPremiumBasisAt(
     atMs,
   ).details[0];
   if (!detail) return null;
-  if (detail.note === "免费") return 0;
+  if (detail.kind === "free") return 0;
   return detail.counted ? detail.remainingCny : null;
 }
 

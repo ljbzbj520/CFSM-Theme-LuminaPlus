@@ -1,15 +1,14 @@
+import { t } from "@/i18n";
 import { memo, useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import {
   ArrowDown,
   ArrowUp,
   CircleDollarSign,
-  Clock3,
   Cpu,
   Gauge,
   HardDrive,
   MemoryStick,
-  Unplug,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { Flag } from "@/components/ui/Flag";
@@ -17,6 +16,7 @@ import { OsLogo } from "@/components/ui/OsLogo";
 import { recordReturnNode } from "@/utils/returnNode";
 import { IpStackBadges } from "./IpStackBadges";
 import { HealthBucketTooltip } from "./HealthBucketTooltip";
+import { SingleLineName } from "./PingLineSwitcher";
 import { MetricDetailTip, useMetricDetailTip } from "./MetricDetailTip";
 import { resolveTouchBucketIndex, TOUCH_BUCKET_HOLD_MS } from "./touchBucketPick";
 import { useNodeCardModel } from "@/hooks/useNodeCardModel";
@@ -89,7 +89,7 @@ function MiniChips({
   return (
     <div className="mini-node-chip-row">
       {renewalPrice && (
-        <span className="mini-node-price-tag" title={`续费价格 ${renewalPrice}`}>
+        <span className="mini-node-price-tag" title={t("card.renewalPriceTitle", { price: renewalPrice })}>
           <CircleDollarSign size={11} strokeWidth={2.2} />
           {renewalPrice}
         </span>
@@ -176,13 +176,13 @@ function MiniVitals({
         label="CPU"
         valueText={node.cpuPct.toFixed(node.cpuPct >= 10 ? 0 : 1)}
         unit="%"
-        detail={`${node.cpuPct.toFixed(2)}% · ${node.cpu_cores || 0} 核`}
+        detail={`${node.cpuPct.toFixed(2)}% · ${t("metric.cpuCores", { n: node.cpu_cores || 0 })}`}
         fraction={node.cpuPct / 100}
         paint="var(--progress-cpu)"
       />
       <MiniMetricBar
         icon={<MemoryStick size={12} strokeWidth={2} />}
-        label="内存"
+        label={t("metric.memory")}
         valueText={node.ramPct.toFixed(node.ramPct >= 10 ? 0 : 1)}
         unit="%"
         detail={`${formatBytes(node.ramUsed)} / ${formatBytes(node.ramTotal)}`}
@@ -191,7 +191,7 @@ function MiniVitals({
       />
       <MiniMetricBar
         icon={<HardDrive size={12} strokeWidth={2} />}
-        label="磁盘"
+        label={t("metric.disk")}
         valueText={node.diskPct.toFixed(node.diskPct >= 10 ? 0 : 1)}
         unit="%"
         detail={`${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`}
@@ -200,7 +200,7 @@ function MiniVitals({
       />
       <MiniMetricBar
         icon={<Gauge size={12} strokeWidth={2} />}
-        label="负载"
+        label={t("metric.load")}
         valueText={node.load1.toFixed(2)}
         detail={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
@@ -251,32 +251,32 @@ function MiniFlow({
 }) {
   return (
     <div className="mini-node-flow">
-      <div className="mini-node-flow-group" aria-label="实时网速">
+      <div className="mini-node-flow-group" aria-label={t("homeSort.speed")}>
         <MiniFlowRow
           icon={<ArrowUp size={12} strokeWidth={2.4} />}
           value={upRate.value}
           unit={upRate.unit}
           color={speedRateColor(upRate.unit)}
-          title="实时上行"
+          title={t("traffic.liveUpload")}
         />
         <MiniFlowRow
           icon={<ArrowDown size={12} strokeWidth={2.4} />}
           value={downRate.value}
           unit={downRate.unit}
           color={speedRateColor(downRate.unit)}
-          title="实时下行"
+          title={t("traffic.liveDownload")}
         />
       </div>
-      <div className="mini-node-flow-group" aria-label="累计流量">
+      <div className="mini-node-flow-group" aria-label={t("home.totalTraffic")}>
         <MiniFlowRow
           icon={<ArrowUp size={12} strokeWidth={2.2} />}
           value={formatBytes(node.trafficUp)}
-          title="累计上行"
+          title={t("traffic.totalUpload")}
         />
         <MiniFlowRow
           icon={<ArrowDown size={12} strokeWidth={2.2} />}
           value={formatBytes(node.trafficDown)}
-          title="累计下行"
+          title={t("traffic.totalDownload")}
         />
       </div>
     </div>
@@ -369,6 +369,7 @@ function MiniHealthBars({
 
 // 延迟/丢包必显；mini 使用内联 SVG，避免每张卡创建 Canvas 与观察器。
 const MiniHealth = memo(function MiniHealth({
+  uuid,
   ping,
   pingBuckets,
   latencyColor,
@@ -377,6 +378,7 @@ const MiniHealth = memo(function MiniHealth({
   pingLoading,
   pingError,
 }: {
+  uuid: string;
   ping: PingOverviewItem;
   pingBuckets: PingOverviewBucket[];
   latencyColor: string;
@@ -396,15 +398,16 @@ const MiniHealth = memo(function MiniHealth({
       data-ping-state={ping.loadState ?? "ready"}
       title={
         pingError && (ping.lastValue != null || ping.loss != null)
-          ? "首页 Ping 刷新失败，显示上次数据"
+          ? t("card.pingStale")
           : undefined
       }
     >
       <div className="mini-node-health-item">
         <div className="mini-node-health-head">
           <span className="mini-node-health-label">
-            <Clock3 size={12} strokeWidth={2} />
-            延迟
+            {/* 只显示线路名，「延迟」「丢包」两个字和图标都不要（站长 2026-10-21），文字给读屏留着。 */}
+            <span className="sr-only">{t("card.latency")}</span>
+            <SingleLineName uuid={uuid} separator={false} />
           </span>
           <strong className="mini-node-health-value tabular" style={{ color: latencyColor }}>
             {ping.lastValue != null ? (
@@ -422,8 +425,7 @@ const MiniHealth = memo(function MiniHealth({
       <div className="mini-node-health-item">
         <div className="mini-node-health-head">
           <span className="mini-node-health-label">
-            <Unplug size={12} strokeWidth={2} />
-            丢包
+            <span className="sr-only">{t("card.loss")}</span>
           </span>
           <strong className="mini-node-health-value tabular" style={{ color: lossColor }}>
             {ping.loss != null ? (
@@ -483,6 +485,7 @@ export const MiniNodeCard = memo(function MiniNodeCard({
       <MiniVitals node={node} loadFraction={loadFraction} />
       <MiniFlow node={node} upRate={upRate} downRate={downRate} />
       <MiniHealth
+        uuid={uuid}
         ping={ping}
         pingBuckets={pingBuckets}
         latencyColor={latencyColor}

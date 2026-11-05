@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useCallback, useEffect, useState } from "react";
 import {
   Cpu,
@@ -21,9 +22,9 @@ import {
 import { useCanSyncSiteTheme } from "@/hooks/useSiteThemeOptions";
 
 const DARK_DEPTH_PRESETS = [
-  { value: 0, label: "灰黑", title: "当前默认色" },
-  { value: 60, label: "深黑", title: "保留少量蓝灰层次" },
-  { value: 100, label: "纯黑", title: "纯黑画布，卡片保留层级" },
+  { value: 0, labelKey: "colors.depthGray", titleKey: "colors.depthGrayTitle" },
+  { value: 60, labelKey: "colors.depthDeep", titleKey: "colors.depthDeepTitle" },
+  { value: 100, labelKey: "colors.depthPure", titleKey: "colors.depthPureTitle" },
 ] as const;
 
 const ICONS: Record<MetricColorKey, typeof Cpu> = {
@@ -70,12 +71,12 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
     <div
       className="metric-color-picker"
       role="group"
-      aria-label="卡片配色"
+      aria-label={t("quick.cardColors")}
       hidden={hidden}
     >
       <div className="metric-color-picker-head">
         {/* 登录站长的改动会自动同步到后端（见 startSiteThemeAutoSync），失败提示在页面底部。 */}
-        <span>配色自定义</span>
+        <span>{t("colors.title")}</span>
         <div className="metric-color-head-actions">
           <button
             type="button"
@@ -86,15 +87,15 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
             }}
             disabled={!hasLocalOverrides}
           >
-            全部重置
+            {t("colors.resetAll")}
           </button>
         </div>
       </div>
-      {saveError && <div className="metric-color-error">保存失败（请确认已登录管理员）</div>}
+      {saveError && <div className="metric-color-error">{t("colors.saveError")}</div>}
       <div className="metric-color-group">
-        <div className="metric-color-group-title">暗色背景</div>
+        <div className="metric-color-group-title">{t("colors.darkBackground")}</div>
         <div className="dark-depth-control">
-          <div className="dark-depth-presets" role="group" aria-label="暗色深度预设">
+          <div className="dark-depth-presets" role="group" aria-label={t("colors.depthPresets")}>
             {DARK_DEPTH_PRESETS.map((preset) => (
               <button
                 key={preset.value}
@@ -103,17 +104,17 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
                 data-active={darkDepth === preset.value ? "true" : "false"}
                 data-depth={preset.value}
                 aria-pressed={darkDepth === preset.value}
-                title={preset.title}
+                title={t(preset.titleKey)}
                 onClick={() => setDarkDepth(preset.value)}
               >
                 <span className="dark-depth-preset-swatch" aria-hidden />
-                <span>{preset.label}</span>
+                <span>{t(preset.labelKey)}</span>
               </button>
             ))}
           </div>
           <label className="dark-depth-range">
             <span className="dark-depth-range-head">
-              <span>黑色程度</span>
+              <span>{t("colors.blackLevel")}</span>
               <output>{darkDepth}%</output>
             </span>
             <input
@@ -122,21 +123,22 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
               max="100"
               step="1"
               value={darkDepth}
-              aria-label="黑色程度"
+              aria-label={t("colors.blackLevel")}
               onChange={(event) => setDarkDepth(Number(event.target.value))}
             />
           </label>
           {resolvedAppearance !== "dark" && (
-            <p className="dark-depth-hint">切换到深色模式后查看实际效果</p>
+            <p className="dark-depth-hint">{t("colors.darkHint")}</p>
           )}
         </div>
       </div>
       {METRIC_COLOR_GROUPS.map((group) => (
         <div className="metric-color-group" key={group.id}>
-          <div className="metric-color-group-title">{group.label}</div>
+          <div className="metric-color-group-title">{t(group.labelKey)}</div>
           <div className="metric-color-list">
-            {METRIC_COLOR_META.filter((item) => item.group === group.id).map(({ key, label }) => {
+            {METRIC_COLOR_META.filter((item) => item.group === group.id).map(({ key, labelKey }) => {
               const Icon = ICONS[key];
+              const label = t(labelKey);
               // 只有本机改过的颜色能「恢复」（回到站点预设色，站点没设才是主题默认色）。
               const overridden = overriddenColors[key] != null;
               return (
@@ -148,7 +150,7 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
                       type="color"
                       value={valueOf(key)}
                       onChange={(event) => setColor(key, event.target.value)}
-                      aria-label={`${label} 颜色`}
+                      aria-label={t("colors.colorOf", { label })}
                     />
                   </label>
                   <button
@@ -159,8 +161,8 @@ export function MetricColorPicker({ hidden = false }: { hidden?: boolean }) {
                       refreshBase();
                     }}
                     disabled={!overridden}
-                    aria-label={`恢复 ${label} 默认色`}
-                    title="恢复默认"
+                    aria-label={t("colors.resetOne", { label })}
+                    title={t("switcher.reset")}
                   >
                     <RotateCcw size={13} />
                   </button>

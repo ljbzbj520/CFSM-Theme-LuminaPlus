@@ -257,6 +257,8 @@ export const SiteConfigSchema = z
     display_mode: looseString.default(""),
     /** 后台「外观设置 → 默认外观」：auto / dark / light。主题设置没写默认外观时拿它垫底。 */
     preferred_theme: looseString.default(""),
+    /** 后台「外观设置 → 默认语言」：auto / zh / en / es。主题的界面语言跟着它走，见 i18n 的 `resolveLanguage`。 */
+    default_language: looseString.default(""),
     theme_options: z.record(z.string(), z.unknown()).default({}),
     verified: z.boolean().default(false),
     turnstile_verified: looseString.nullish().transform((v) => v ?? ""),
@@ -484,6 +486,10 @@ export interface ThemeSettings {
   desktopNodeViewMode?: "large" | "compact" | "mini" | "list";
   mobileNodeViewMode?: "large" | "compact" | "mini" | "list";
   enableAdminButton?: boolean;
+  /** 首页快捷栏里显示哪些按钮（主题设置按钮一直显示，不然访客回不到设置页）。 */
+  quickShowAppearance?: boolean;
+  quickShowViewMode?: boolean;
+  quickShowColors?: boolean;
   showPingChart?: boolean;
   homepagePingBindings?: Record<string, string[]>;
   homepageDefaultPingTaskId?: number;
@@ -537,7 +543,10 @@ export interface LoadRecord {
   ram_total: number;
   swap: number;
   swap_total: number;
+  /** 1 分钟负载（后端历史存的是整串 load_avg）。 */
   load: number;
+  load5: number;
+  load15: number;
   temp: number;
   disk: number;
   disk_total: number;

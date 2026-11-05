@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { Link } from "react-router-dom";
 
 export function NotFound() {
@@ -6,12 +7,12 @@ export function NotFound() {
       <div className="text-7xl font-semibold tracking-tight text-[var(--text-primary)]">
         404
       </div>
-      <p className="text-[var(--text-secondary)]">页面未找到</p>
+      <p className="text-[var(--text-secondary)]">{t("notFound.title")}</p>
       <Link
         to="/"
         className="control-button px-5 py-2 text-[13px] font-medium"
       >
-        返回首页
+        {t("error.backHome")}
       </Link>
     </div>
   );

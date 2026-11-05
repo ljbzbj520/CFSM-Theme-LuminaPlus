@@ -1,9 +1,14 @@
+import { memoByLanguage, t } from "@/i18n";
+
 const UNITS = ["B", "KB", "MB", "GB", "TB", "PB"] as const;
-const CLOCK_TIME_FORMATTER = new Intl.DateTimeFormat("zh-CN", {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
+const clockTimeFormatter = memoByLanguage(
+  (locale) =>
+    new Intl.DateTimeFormat(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+);
 const TRAFFIC_RATE_THRESHOLDS: Array<{ unit: Exclude<TrafficRateUnit, "bps">; divisor: number }> = [
   { unit: "Tbps", divisor: 1_000_000_000_000 },
   { unit: "Gbps", divisor: 1_000_000_000 },
@@ -51,7 +56,7 @@ export function formatBytes(n: number | undefined | null): string {
 /** 只显示时分（本地时区），用于峰值时间、更新时间等场景。 */
 export function formatClockTime(timeMs: number | null | undefined): string {
   if (timeMs == null || !Number.isFinite(timeMs)) return "—";
-  return CLOCK_TIME_FORMATTER.format(timeMs);
+  return clockTimeFormatter().format(timeMs);
 }
 
 function formatRateValue(value: number): string {
@@ -111,12 +116,12 @@ export function formatByteRateLabel(bytesPerSec: number | undefined | null): str
 export function formatUptimeDays(seconds: number): { value: string; unit: string } {
   if (!Number.isFinite(seconds) || seconds <= 0) return { value: "—", unit: "" };
   const days = seconds / 86400;
-  if (days >= 1) return { value: Math.floor(days).toString(), unit: "天" };
+  if (days >= 1) return { value: Math.floor(days).toString(), unit: t("unit.day") };
   const hours = seconds / 3600;
-  if (hours >= 1) return { value: Math.floor(hours).toString(), unit: "小时" };
+  if (hours >= 1) return { value: Math.floor(hours).toString(), unit: t("unit.hour") };
   // 不足 1 分钟向上取整,避免刚上线显示成「0 分钟」而 <=0 又显示「—」的口径分裂。
   const minutes = Math.max(1, Math.floor(seconds / 60));
-  return { value: minutes.toString(), unit: "分钟" };
+  return { value: minutes.toString(), unit: t("unit.minute") };
 }
 
 // 将 `expired_at` 解析为毫秒；空值、Go 零时和 0/-1 哨兵均表示无到期。
@@ -179,10 +184,10 @@ export function formatExpireDays(
   const days = getExpireDaysRemaining(iso, now);
   const tone = resolveExpireTone(days);
   if (days == null) return { value: "—", unit: "", tone };
-  if (tone === "long") return { value: "长期", unit: "", tone };
-  if (days > 0) return { value: days.toString(), unit: "天", tone };
-  if (days === 0) return { value: "今日", unit: "", tone };
-  return { value: "已过期", unit: "", tone };
+  if (tone === "long") return { value: t("expire.longTerm"), unit: "", tone };
+  if (days > 0) return { value: days.toString(), unit: t("unit.day"), tone };
+  if (days === 0) return { value: t("expire.today"), unit: "", tone };
+  return { value: t("expire.expired"), unit: "", tone };
 }
 
 function inferPlainTagColor(label: string): string {

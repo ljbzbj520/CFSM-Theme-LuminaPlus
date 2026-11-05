@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { memo, useEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -6,14 +7,12 @@ import {
   ArrowUp,
   Calendar,
   CircleDollarSign,
-  Clock3,
   Cpu,
   Database,
   Gauge,
   HardDrive,
   MemoryStick,
   Network,
-  Unplug,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { Flag } from "@/components/ui/Flag";
@@ -26,6 +25,8 @@ import { formatBytes } from "@/utils/format";
 import { speedRateColor, speedRateColorFromBytes } from "@/utils/metricTone";
 import { supportsFineHover } from "@/utils/mediaQuery";
 import { formatHealthBucketTooltip } from "./pingBucketText";
+import { HealthBucketTooltip } from "./HealthBucketTooltip";
+import { SingleLineName } from "./PingLineSwitcher";
 import { resolveTouchBucketIndex, TOUCH_BUCKET_HOLD_MS } from "./touchBucketPick";
 import { MultiPingStatus } from "./MultiPingStatus";
 import {
@@ -226,10 +227,6 @@ function HealthBars({
   const activeIndex = hoveredIndex ?? selectedIndex;
   const activeBucket = activeIndex == null ? null : bars[activeIndex] ?? null;
   const activeTooltip = activeBucket ? formatHealthBucketTooltip(activeBucket, kind) : null;
-  const activeLeft =
-    activeIndex == null || bars.length === 0
-      ? "50%"
-      : `clamp(42px, ${((activeIndex + 0.5) / bars.length) * 100}%, calc(100% - 42px))`;
 
   const selectIndex = (next: number) => {
     if (bars.length === 0) return;
@@ -262,10 +259,12 @@ function HealthBars({
       ref={containerRef}
       className="compact-node-health-bars"
       data-kind={kind}
-      style={{ "--compact-health-tooltip-x": activeLeft } as CSSProperties}
       tabIndex={0}
       role="group"
-      aria-label={`${kind === "latency" ? "延迟" : "丢包"}历史${activeTooltip ? `，${activeTooltip}` : ""}，使用左右方向键查看`}
+      aria-label={t("compact.historyAria", {
+        kind: t(kind === "latency" ? "card.latency" : "card.loss"),
+        tip: activeTooltip ? t("compact.historyTip", { tip: activeTooltip }) : "",
+      })}
       onFocus={() => {
         if (!supportsFineHover()) return;
         if (selectedIndex == null) selectIndex(bars.length - 1);
@@ -294,11 +293,12 @@ function HealthBars({
         event.preventDefault();
       }}
     >
-      {activeTooltip && (
-        <span className="compact-node-health-tooltip" role="status">
-          {activeTooltip}
-        </span>
-      )}
+      <HealthBucketTooltip
+        text={activeTooltip}
+        index={activeIndex}
+        count={bars.length}
+        className="compact-node-health-tooltip"
+      />
       {bars.map((bucket, index) => {
         const slot = healthBarSlotModel(bucket, kind);
         const style = {
@@ -331,15 +331,13 @@ function HealthBars({
 }
 
 function CompactHealthItem({
-  icon,
   label,
   value,
   unit,
   color,
   children,
 }: {
-  icon: ReactNode;
-  label: string;
+  label: ReactNode;
   value: string;
   unit?: string;
   color: string;
@@ -349,7 +347,6 @@ function CompactHealthItem({
     <div className="compact-node-health-item">
       <div className="compact-node-health-head">
         <span className="compact-node-health-label">
-          {icon}
           {label}
         </span>
         <strong className="compact-node-health-value tabular" style={{ color }}>
@@ -454,14 +451,14 @@ function CompactNodeVitals({
         icon={<Cpu size={12} />}
         label="CPU"
         value={formatCompactPercent(node.cpuPct)}
-        detail={`${node.cpuPct.toFixed(2)}% · ${node.cpu_cores || 0} 核`}
+        detail={`${node.cpuPct.toFixed(2)}% · ${t("metric.cpuCores", { n: node.cpu_cores || 0 })}`}
         fraction={node.cpuPct / 100}
         color="var(--progress-cpu)"
         metric="cpu"
       />
       <CompactGauge
         icon={<MemoryStick size={12} />}
-        label="内存"
+        label={t("metric.memory")}
         value={formatCompactPercent(node.ramPct)}
         actualUsage={ramDetail}
         detail={ramDetail}
@@ -471,7 +468,7 @@ function CompactNodeVitals({
       />
       <CompactGauge
         icon={<HardDrive size={12} />}
-        label="磁盘"
+        label={t("metric.disk")}
         value={formatCompactPercent(node.diskPct)}
         detail={`${formatBytes(node.diskUsed)} / ${formatBytes(node.diskTotal)}`}
         fraction={node.diskPct / 100}
@@ -480,7 +477,7 @@ function CompactNodeVitals({
       />
       <CompactGauge
         icon={<Gauge size={12} />}
-        label="负载"
+        label={t("metric.load")}
         value={node.load1.toFixed(2)}
         detail={`${node.load1.toFixed(2)} / ${node.load5.toFixed(2)} / ${node.load15.toFixed(2)}`}
         fraction={loadFraction}
@@ -523,7 +520,7 @@ function CompactNodeInfoStrip({
       style={{ "--compact-info-columns": infoTileCount } as CSSProperties}
     >
       <CompactInfoTile
-        label="实时速率"
+        label={t("card.liveRate")}
         color="var(--progress-cpu)"
       >
         <CompactInfoRow
@@ -542,7 +539,7 @@ function CompactNodeInfoStrip({
       </CompactInfoTile>
       {showTrafficTotal && (
         <CompactInfoTile
-          label="累计流量"
+          label={t("home.totalTraffic")}
           color="var(--text-primary)"
           className="is-traffic-total"
         >
@@ -551,7 +548,7 @@ function CompactNodeInfoStrip({
               <ArrowUp
                 size={12}
                 strokeWidth={2.5}
-                aria-label="上行"
+                aria-label={t("traffic.upload")}
               />
             )}
             value={formatBytes(node.trafficUp)}
@@ -561,7 +558,7 @@ function CompactNodeInfoStrip({
               <ArrowDown
                 size={12}
                 strokeWidth={2.5}
-                aria-label="下行"
+                aria-label={t("traffic.download")}
               />
             )}
             value={formatBytes(node.trafficDown)}
@@ -570,7 +567,7 @@ function CompactNodeInfoStrip({
       )}
       {showBilling && (
         <CompactInfoTile
-          label="费用到期"
+          label={t("card.billing")}
           color="var(--status-success)"
         >
           <CompactInfoRow
@@ -581,13 +578,13 @@ function CompactNodeInfoStrip({
           <CompactInfoRow
             icon={<CircleDollarSign size={12} strokeWidth={2.2} />}
             // 后端 price 为空/0/-1 都表示免费，小卡片直接写「免费」而不是留白。
-            value={renewalPrice || "免费"}
+            value={renewalPrice || t("billing.free")}
             color={renewalPrice ? "var(--text-secondary)" : "var(--text-tertiary)"}
           />
         </CompactInfoTile>
       )}
       {showConnections && (
-        <CompactInfoTile label="连接数" color="var(--progress-network)">
+        <CompactInfoTile label={t("card.connections")} color="var(--progress-network)">
           <CompactInfoRow
             icon={<Network size={12} strokeWidth={2.1} />}
             label="TCP"
@@ -628,9 +625,7 @@ function CompactTrafficBar({
   } as CSSProperties;
 
   const tooltipParts = [
-    "流量",
-    traffic.typeLabel,
-    traffic.detail,
+    traffic.tooltip || "流量",
     resetLabel || null,
     uptimeLabel || null,
   ].filter(Boolean);
@@ -652,14 +647,14 @@ function CompactTrafficBar({
       <span className="compact-node-traffic-text">流量：{resetLabel}</span>
     )
   ) : (
-    <span className="compact-node-traffic-text">流量</span>
+    <span className="compact-node-traffic-text">{t("card.traffic")}</span>
   );
 
   return (
     <div
       className="compact-node-traffic"
       style={style}
-      title={tooltipParts.join(" · ")}
+      title={tooltipParts.join("\n")}
     >
       <div className={clsx("compact-node-traffic-body", uptimeLabel && "has-uptime")}>
         {uptimeLabel ? (
@@ -693,6 +688,7 @@ function CompactTrafficBar({
 // ~60s 才刷新一次),所以在 ping 数据真正变化前,跳过重渲染 latency/loss HealthBars
 // 这棵子树 —— 它是每 tick DOM 开销的大头。
 const CompactNodeHealth = memo(function CompactNodeHealth({
+  uuid,
   ping,
   pingBuckets,
   latencyColor,
@@ -701,6 +697,7 @@ const CompactNodeHealth = memo(function CompactNodeHealth({
   pingLoading,
   pingError,
 }: {
+  uuid: string;
   ping: PingOverviewItem;
   pingBuckets: PingOverviewBucket[];
   latencyColor: string;
@@ -721,13 +718,18 @@ const CompactNodeHealth = memo(function CompactNodeHealth({
       data-ping-state={ping.loadState ?? "ready"}
       title={
         pingError && (ping.lastValue != null || ping.loss != null)
-          ? "首页 Ping 刷新失败，显示上次数据"
+          ? t("card.pingStale")
           : undefined
       }
     >
       <CompactHealthItem
-        icon={<Clock3 size={12} />}
-        label="延迟"
+        label={
+          <>
+            {/* 只显示线路名，「延迟」「丢包」两个字和图标都不要（站长 2026-10-21），文字给读屏留着。 */}
+            <span className="sr-only">{t("card.latency")}</span>
+            <SingleLineName uuid={uuid} separator={false} />
+          </>
+        }
         value={ping.lastValue != null ? Math.round(ping.lastValue).toString() : emptyText}
         unit={ping.lastValue != null ? "ms" : undefined}
         color={latencyColor}
@@ -735,8 +737,7 @@ const CompactNodeHealth = memo(function CompactNodeHealth({
         <HealthBars buckets={pingBuckets} kind="latency" />
       </CompactHealthItem>
       <CompactHealthItem
-        icon={<Unplug size={12} />}
-        label="丢包"
+        label={<span className="sr-only">{t("card.loss")}</span>}
         value={ping.loss != null ? ping.loss.toFixed(1) : emptyText}
         unit={ping.loss != null ? "%" : undefined}
         color={lossColor}
@@ -828,6 +829,7 @@ export const CompactNodeCard = memo(function CompactNodeCard({
         />
       ) : (
         <CompactNodeHealth
+          uuid={uuid}
           ping={ping}
           pingBuckets={pingBuckets}
           latencyColor={latencyColor}

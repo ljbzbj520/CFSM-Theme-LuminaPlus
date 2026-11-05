@@ -1,8 +1,10 @@
+import { t } from "@/i18n";
 import { useEffect, useId, useRef, useState } from "react";
 import { ArrowDownWideNarrow, ArrowUpNarrowWide } from "lucide-react";
 import {
   HOME_SORT_FIELDS,
-  HOME_SORT_FIELD_LABELS,
+  homeSortFieldLabel,
+  homeSortFieldShortLabel,
   type HomeSortDirection,
   type HomeSortField,
 } from "@/utils/homeSort";
@@ -57,15 +59,15 @@ export function HomeSortControl({ state }: { state: HomeSortControlState }) {
         aria-haspopup="true"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
-        aria-label={`排序方式，当前${HOME_SORT_FIELD_LABELS[field]}${direction === "asc" ? "升序" : "降序"}`}
-        title={`排序：${HOME_SORT_FIELD_LABELS[field]}（${direction === "asc" ? "升序" : "降序"}）`}
+        aria-label={t("homeSort.ariaCurrent", { field: homeSortFieldLabel(field), direction: t(direction === "asc" ? "homeSort.asc" : "homeSort.desc") })}
+        title={t("homeSort.title", { field: homeSortFieldLabel(field), direction: t(direction === "asc" ? "homeSort.asc" : "homeSort.desc") })}
         onClick={() => setOpen((value) => !value)}
       >
         <SortIcon direction={direction} />
-        <span>{HOME_SORT_FIELD_LABELS[field]}</span>
+        <span>{homeSortFieldShortLabel(field)}</span>
       </button>
       {open && (
-        <div id={panelId} className="home-sort-panel" role="group" aria-label="排序方式">
+        <div id={panelId} className="home-sort-panel" role="group" aria-label={t("homeSort.panelLabel")}>
           {HOME_SORT_FIELDS.map((option) => {
             const active = option === field;
             return (
@@ -77,7 +79,7 @@ export function HomeSortControl({ state }: { state: HomeSortControlState }) {
                 className="home-sort-item"
                 onClick={() => select(option)}
               >
-                <span className="home-sort-item-label">{HOME_SORT_FIELD_LABELS[option]}</span>
+                <span className="home-sort-item-label">{homeSortFieldLabel(option)}</span>
                 {active && <SortIcon direction={direction} size={15} />}
               </button>
             );

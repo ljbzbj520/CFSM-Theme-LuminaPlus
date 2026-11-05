@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { Outlet, useLocation } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { BackgroundLayer } from "./BackgroundLayer";
@@ -90,12 +91,12 @@ function AccessError({ onRetry }: { onRetry: () => void }) {
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
       <div className="space-y-2">
         <div className="text-[15px] font-semibold text-[var(--text-primary)]">
-          无法读取站点配置
+          {t("shell.configError")}
         </div>
-        <p className="text-[13px] text-[var(--text-secondary)]">请检查网络后重试。</p>
+        <p className="text-[13px] text-[var(--text-secondary)]">{t("shell.configErrorHint")}</p>
       </div>
       <button type="button" onClick={onRetry} className="control-button px-4 py-2 text-[13px] font-medium">
-        重试
+        {t("common.retry")}
       </button>
     </div>
   );
@@ -108,9 +109,9 @@ function PrivateSiteGate() {
         <Lock size={22} strokeWidth={2} />
       </div>
       <div className="space-y-2">
-        <div className="text-[15px] font-semibold text-[var(--text-primary)]">站点已设为私有</div>
+        <div className="text-[15px] font-semibold text-[var(--text-primary)]">{t("shell.privateTitle")}</div>
         <p className="max-w-[32rem] text-[13px] text-[var(--text-secondary)]">
-          登录后即可查看节点数据。
+          {t("shell.privateHint")}
         </p>
       </div>
       <a
@@ -119,7 +120,7 @@ function PrivateSiteGate() {
         rel="noopener noreferrer"
         className="control-button px-4 py-2 text-[13px] font-medium"
       >
-        前往登录
+        {t("shell.signIn")}
       </a>
     </div>
   );

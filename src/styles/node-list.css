@@ -252,6 +252,16 @@
   gap: 3px;
 }
 
+/* 当前延迟和线路名一行（单线路时看得出是哪条线路，issue #9）。 */
+.node-list-latency-head {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: baseline;
+  gap: 3px;
+  font-size: 10.5px;
+}
+
 .node-list-latency-value {
   font-size: 12.5px;
   font-weight: 660;
@@ -283,7 +293,8 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  /* 64（两行流量）+ 8 + 38（百分比）= 110，正好是这一列收窄后的最小宽度。 */
+  gap: 8px;
 }
 
 .node-list-traffic-rows {
@@ -295,9 +306,33 @@
 
 .node-list-traffic-quota {
   flex: 0 0 auto;
+  /* 定宽（放得下「100%」）、靠左：每行的百分比从同一个位置开始。 */
+  width: 38px;
   font-size: 12px;
   font-weight: 720;
   letter-spacing: 0.02em;
+  text-align: left;
+}
+
+/* 实时 / 流量两列里每行文字定宽，箭头靠左、数字靠右。原来整块按内容宽度居中，
+   「1.36 MB/s」和「0 B/s」宽度不同，行与行之间箭头和数字左右错开最多十几像素。 */
+.col-live .node-list-line {
+  display: flex;
+  width: 76px;
+}
+
+.node-list-traffic-rows {
+  width: 64px;
+}
+
+.node-list-traffic-rows .node-list-line {
+  display: flex;
+  width: 100%;
+}
+
+.col-live .node-list-line-value,
+.node-list-traffic-rows .node-list-line-value {
+  margin-left: auto;
 }
 
 /* ── 响应式收窄:桌面变窄时按优先级隐藏 网络 → 负载,并同步收缩列模板(否则空轨道错位)。 ── */

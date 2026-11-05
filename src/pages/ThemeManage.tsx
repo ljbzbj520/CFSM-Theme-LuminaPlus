@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import {
   memo,
   useCallback,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
   type ComponentPropsWithoutRef,
+  type CSSProperties,
 } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
@@ -39,6 +41,7 @@ import {
   Sun,
   SunMoon,
   Tag,
+  ToggleRight,
   Wallpaper,
   X,
 } from "lucide-react";
@@ -48,6 +51,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Flag } from "@/components/ui/Flag";
 import { useCarrierNames, usePublicConfig } from "@/hooks/usePublicConfig";
 import { useHourlyClock } from "@/hooks/useClock";
+import { followDefaultAppearance } from "@/hooks/usePreferences";
 import { useAllPingLineOverrides } from "@/hooks/usePingOverview";
 import {
   cancelSiteThemeSync,
@@ -116,25 +120,26 @@ import {
   getDefaultOverviewRatingLabelText,
   type OverviewRatingKind,
 } from "@/utils/overviewRating";
-import { HOME_SORT_FIELDS, HOME_SORT_FIELD_LABELS } from "@/utils/homeSort";
+import { HOME_SORT_FIELDS, homeSortFieldLabel } from "@/utils/homeSort";
 
 const APPEARANCE_OPTIONS = [
-  { value: "light", label: "浅色", icon: Sun },
-  { value: "system", label: "跟随系统", icon: SunMoon },
-  { value: "dark", label: "深色", icon: Moon },
+  // label 写成 getter：每次读都按当前界面语言取。
+  { value: "light", get label() { return t("appearance.light"); }, icon: Sun },
+  { value: "system", get label() { return t("appearance.system"); }, icon: SunMoon },
+  { value: "dark", get label() { return t("appearance.dark"); }, icon: Moon },
 ] as const;
 const NODE_VIEW_MODE_OPTIONS = [
-  { value: "large", label: "大卡片", icon: LayoutGrid },
-  { value: "compact", label: "小卡片", icon: Rows3 },
-  { value: "mini", label: "迷你卡片", icon: Grid3x3 },
-  { value: "list", label: "列表", icon: List },
+  { value: "large", get label() { return t("settings.viewLarge"); }, icon: LayoutGrid },
+  { value: "compact", get label() { return t("settings.viewCompact"); }, icon: Rows3 },
+  { value: "mini", get label() { return t("settings.viewMini"); }, icon: Grid3x3 },
+  { value: "list", get label() { return t("settings.viewList"); }, icon: List },
 ] as const;
 const MOBILE_VIEW_MODE_OPTIONS = NODE_VIEW_MODE_OPTIONS.filter((option) => option.value !== "list");
 
 // 大卡片/小卡片显示单条还是多条线路。value 直接是 enableHomepageMultiPing 的布尔值。
 const HOMEPAGE_PING_MODE_OPTIONS = [
-  { value: false, label: "单线路", icon: Rows3 },
-  { value: true, label: "多线路", icon: ListFilter },
+  { value: false, get label() { return t("settings.pingSingle"); }, icon: Rows3 },
+  { value: true, get label() { return t("settings.pingMulti"); }, icon: ListFilter },
 ] as const;
 
 function localDateInputMax() {
@@ -151,10 +156,15 @@ const OVERVIEW_RATING_LABEL_FIELDS: Array<{
   title: string;
   toggleKey: "showTrafficRating" | "showBandwidthRating" | "showAssetRating";
 }> = [
-  { key: "traffic", title: "累计流量", toggleKey: "showTrafficRating" },
-  { key: "bandwidth", title: "实时带宽", toggleKey: "showBandwidthRating" },
-  { key: "asset", title: "资产概览", toggleKey: "showAssetRating" },
+  { key: "traffic", get title() { return t("home.totalTraffic"); }, toggleKey: "showTrafficRating" },
+  { key: "bandwidth", get title() { return t("home.liveBandwidth"); }, toggleKey: "showBandwidthRating" },
+  { key: "asset", get title() { return t("home.assets"); }, toggleKey: "showAssetRating" },
 ];
+
+/** 选项多的分段控件排几列：4 个以内一行放完，再多就对半分成两行（8 个 → 4 + 4），不留孤零零的一个。 */
+function segmentColumns(count: number) {
+  return count <= 4 ? Math.max(1, count) : Math.ceil(count / 2);
+}
 
 function sortTasks(tasks: PingTask[]) {
   return [...tasks].sort((left, right) => {
@@ -202,9 +212,9 @@ function summarizeNodes(
   uuids: string[],
   clientsById: Map<string, NodeInfo>,
 ) {
-  if (uuids.length === 0) return "点右侧「编辑节点」把节点加进来";
+  if (uuids.length === 0) return "";
   const names = uuids.map((uuid) => clientsById.get(uuid)?.name || uuid);
-  const summary = names.join("、");
+  const summary = names.join(t("settings.listJoiner"));
   return summary.length > 92 ? `${summary.slice(0, 92)}...` : summary;
 }
 
@@ -295,6 +305,10 @@ function pickManagedThemeSettings(settings: ResolvedThemeSettings) {
     defaultAppearance: settings.defaultAppearance,
     desktopNodeViewMode: settings.desktopNodeViewMode,
     mobileNodeViewMode: settings.mobileNodeViewMode,
+    quickShowAppearance: settings.quickShowAppearance,
+    quickShowViewMode: settings.quickShowViewMode,
+    quickShowColors: settings.quickShowColors,
+    enableAdminButton: settings.enableAdminButton,
     homepagePingBindings: settings.homepagePingBindings,
     homepageDefaultPingTaskId: settings.homepageDefaultPingTaskId,
     enableHomepageMultiPing: settings.enableHomepageMultiPing,
@@ -437,7 +451,8 @@ const ToggleRow = memo(function ToggleRow({
 }: {
   field: BooleanDraftKey;
   title: string;
-  desc: string;
+  /** 只在说得出标题之外的信息时才写（站长 2026-10-23：别把标题换个说法再说一遍）。 */
+  desc?: string;
   checked: boolean;
   onPatch: (key: BooleanDraftKey, value: boolean) => void;
 }) {
@@ -445,7 +460,7 @@ const ToggleRow = memo(function ToggleRow({
     <label className="surface-inset flex items-center justify-between gap-3 px-4 py-3">
       <span className="min-w-0">
         <span className="block setting-subhead-title">{title}</span>
-        <span className="mt-1 block setting-hint">{desc}</span>
+        {desc && <span className="mt-1 block setting-hint">{desc}</span>}
       </span>
       <input
         type="checkbox"
@@ -532,36 +547,50 @@ const TaskBindingSection = memo(function TaskBindingSection({
   const allVisibleSelectableAssigned =
     selectableVisibleClients.length > 0 &&
     selectableVisibleClients.every((client) => assigned.includes(client.uuid));
+  // 没节点的线路压成一行（站长 2026-10-23：八条线路每张都写两行「还没有节点…」，整组两屏多）。
+  const isEmpty = existingAssigned.length === 0;
   return (
-    <section className="surface-inset px-4 py-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <section className={clsx("surface-inset px-4", isEmpty ? "py-2.5" : "py-4")}>
+      <div
+        className={clsx(
+          "flex flex-wrap justify-between gap-3",
+          isEmpty ? "items-center" : "items-start",
+        )}
+      >
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">
-              {task.name || `任务 #${task.id}`}
+              {task.name || t("ping.taskN", { n: task.id })}
             </h3>
             {isDefaultTask && (
               <span className="rounded-full border border-[var(--hairline)] px-2 py-0.5 text-[10px] font-medium text-[var(--text-tertiary)]">
-                默认线路
+                {t("settings.defaultLineBadge")}
+              </span>
+            )}
+            {isEmpty && (
+              <span className="text-[12px] text-[var(--text-tertiary)]">
+                {isDefaultTask ? t("settings.lineDefaultNote") : t("settings.lineUnused")}
               </span>
             )}
           </div>
-          <div className="mt-2 text-[12px] text-[var(--text-secondary)]">
-            <span className="font-medium text-[var(--text-primary)]">
-              {existingAssigned.length > 0
-                ? `${existingAssigned.length} 台节点在首页显示这条线路的延迟`
-                : "还没有节点选这条线路"}
-            </span>
-            {isDefaultTask && (
-              <>
-                <span className="mx-2 text-[var(--text-tertiary)]">·</span>
-                <span>没单独指定线路的节点都走这条</span>
-              </>
-            )}
-          </div>
-          <p className="mt-2 text-[12px] text-[var(--text-tertiary)]" title={assignedSummary}>
-            {assignedSummary}
-          </p>
+          {!isEmpty && (
+            <>
+              <div className="mt-2 text-[12px] text-[var(--text-secondary)]">
+                <span className="font-medium text-[var(--text-primary)]">
+                  {t("settings.lineShownOn", { n: existingAssigned.length })}
+                </span>
+                {isDefaultTask && (
+                  <>
+                    <span className="mx-2 text-[var(--text-tertiary)]">·</span>
+                    <span>{t("settings.lineDefaultNote")}</span>
+                  </>
+                )}
+              </div>
+              <p className="mt-2 text-[12px] text-[var(--text-tertiary)]" title={assignedSummary}>
+                {assignedSummary}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -580,7 +609,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
               }}
               className="theme-manage-button is-compact"
             >
-              {allVisibleSelectableAssigned ? "已全选可用" : "全选可用"}
+              {allVisibleSelectableAssigned ? t("settings.allSelected") : t("settings.selectAll")}
             </button>
           )}
           {existingAssigned.length > 0 && (
@@ -595,7 +624,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
               }}
               className="theme-manage-button is-compact is-danger"
             >
-              清空节点
+              {t("settings.clearNodes")}
             </button>
           )}
           <button
@@ -604,7 +633,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
             onClick={() => onToggleExpand(task.id)}
             className="theme-manage-button is-compact"
           >
-            {expanded ? "收起节点" : "编辑节点"}
+            {expanded ? t("settings.collapseNodes") : t("settings.editNodes")}
           </button>
         </div>
       </div>
@@ -616,8 +645,8 @@ const TaskBindingSection = memo(function TaskBindingSection({
             <input
               value={nodeSearch}
               onChange={(event) => onNodeSearch(event.target.value)}
-              placeholder="搜索节点名称 / UUID / 分组 / 地区"
-              aria-label="搜索节点"
+              placeholder={t("settings.searchNodesPlaceholder")}
+              aria-label={t("settings.searchNodes")}
               className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
             />
           </label>
@@ -655,7 +684,7 @@ const TaskBindingSection = memo(function TaskBindingSection({
                       </span>
                     </div>
                     <div className="mt-1 setting-hint">
-                      {subtitle || client.region || "未设置分组"}
+                      {subtitle || client.region || t("settings.noGroup")}
                     </div>
                   </div>
                 </label>
@@ -695,13 +724,13 @@ const PremiumList = memo(function PremiumList({
         const entry = costPremiums[client.uuid];
         const detail = detailByUuid.get(client.uuid);
         const referenceLabel = rateLoading
-          ? "计算中"
+          ? t("settings.calculating")
           : detail
             ? detail.counted
               ? formatCnyMoney(detail.remainingCny)
               : detail.note || "--"
             : "--";
-        const canCompute = detail != null && (detail.counted || detail.note === "免费");
+        const canCompute = detail != null && (detail.counted || detail.kind === "free");
         return (
           <div
             key={client.uuid}
@@ -717,7 +746,7 @@ const PremiumList = memo(function PremiumList({
               </span>
               <span
                 className="shrink-0 setting-hint"
-                title="该节点当前剩余价值（按账单周期折算，不含溢价）"
+                title={t("settings.remainingValueTitle")}
               >
                 {referenceLabel}
               </span>
@@ -734,11 +763,11 @@ const PremiumList = memo(function PremiumList({
                   }}
                   title={
                     entry.paidCny != null
-                      ? "溢价 = 收购价 − 收购日剩余价值；该折算基准已经固化"
-                      : "旧格式：直接记录的溢价，填写收购价后自动升级"
+                      ? t("settings.premiumFixedTitle")
+                      : t("settings.premiumLegacyTitle")
                   }
                 >
-                  溢价 {formatSignedCny(entry.amount)}
+                  {t("settings.premiumValue", { value: formatSignedCny(entry.amount) })}
                 </span>
               )}
             </div>
@@ -754,15 +783,15 @@ const PremiumList = memo(function PremiumList({
                   if (event.target.validity.badInput) return;
                   onPatchPaid(client.uuid, event.target.value);
                 }}
-                placeholder="收购价"
+                placeholder={t("settings.paidPlaceholder")}
                 disabled={!canCompute}
-                aria-label={`${client.name} 的收购价`}
+                aria-label={t("settings.paidAria", { name: client.name })}
                 title={
                   canCompute
-                    ? "实际收购价（人民币），留空即清除记录"
-                    : "该节点已忽略或汇率缺失，无法折算剩余价值"
+                    ? t("settings.paidTitle")
+                    : t("settings.premiumUnavailable")
                 }
-                className="surface-inset w-24 px-2 py-1 text-right text-[13px] outline-none disabled:opacity-45"
+                className="surface-inset h-[30px] w-24 px-2 py-1 text-right text-[13px] outline-none disabled:opacity-45"
               />
               <input
                 type="date"
@@ -772,13 +801,13 @@ const PremiumList = memo(function PremiumList({
                 // 与收购价同门槛:汇率/基准未就绪时 patchPremiumAcquiredAt 无法回算,
                 // 放开输入只会被静默丢弃(受控值弹回旧日期)。
                 disabled={!entry || !canCompute}
-                aria-label={`${client.name} 的收购日期`}
+                aria-label={t("settings.acquiredAria", { name: client.name })}
                 title={
                   canCompute
-                    ? "收购日期：修改后会按当前价格、周期、到期日和汇率回算该日剩余价值，重新计算并固化溢价"
-                    : "该节点已忽略或汇率缺失，无法折算剩余价值"
+                    ? t("settings.acquiredTitle")
+                    : t("settings.premiumUnavailable")
                 }
-                className="surface-inset w-[8.75rem] px-2 py-1 text-[12px] outline-none disabled:opacity-45"
+                className="surface-inset h-[30px] w-[8.75rem] px-2 py-1 text-[12px] outline-none disabled:opacity-45"
               />
             </div>
           </div>
@@ -902,11 +931,36 @@ const THEME_TABS: ReadonlyArray<{
   hint: string;
   icon: typeof LayoutTemplate;
 }> = [
-  { id: "appearance", label: "外观", hint: "外观、卡片尺寸、透明度", icon: LayoutTemplate },
-  { id: "home", label: "首页", hint: "总览、排序、隐藏节点", icon: ListFilter },
-  { id: "card", label: "卡片", hint: "卡片上显示哪些信息", icon: Rows3 },
-  { id: "cost", label: "花费", hint: "资产统计与收购溢价", icon: CircleDollarSign },
-  { id: "ping", label: "延迟", hint: "线路与逐节点指定", icon: Activity },
+  {
+    id: "appearance",
+    get label() { return t("settings.tabAppearance"); },
+    get hint() { return t("settings.tabAppearanceHint"); },
+    icon: LayoutTemplate,
+  },
+  {
+    id: "home",
+    get label() { return t("settings.tabHome"); },
+    get hint() { return t("settings.tabHomeHint"); },
+    icon: ListFilter,
+  },
+  {
+    id: "card",
+    get label() { return t("settings.tabCard"); },
+    get hint() { return t("settings.tabCardHint"); },
+    icon: Rows3,
+  },
+  {
+    id: "cost",
+    get label() { return t("settings.tabCost"); },
+    get hint() { return t("settings.tabCostHint"); },
+    icon: CircleDollarSign,
+  },
+  {
+    id: "ping",
+    get label() { return t("settings.tabPing"); },
+    get hint() { return t("settings.tabPingHint"); },
+    icon: Activity,
+  },
 ];
 
 const DEFAULT_THEME_TAB: ThemeTabId = "appearance";
@@ -946,21 +1000,21 @@ function SiteSyncIndicator({
   const [icon, text] = invalid
     ? [
         <CloudOff key="off" size={14} />,
-        toSite ? "有设置填得不对，暂未同步" : "有设置填得不对，暂未保存",
+        toSite ? t("settings.invalidNotSynced") : t("settings.invalidNotSaved"),
       ]
     : !toSite
       ? waiting
-        ? [<Spinner key="spin" size={14} />, "正在保存到本机"]
+        ? [<Spinner key="spin" size={14} />, t("settings.savingLocal")]
         : savedLocally
-          ? [<Save key="saved" size={14} />, "已保存到本机"]
-          : [<Save key="local" size={14} />, "改动自动保存到本机"]
+          ? [<Save key="saved" size={14} />, t("settings.savedLocal")]
+          : [<Save key="local" size={14} />, t("settings.autoSaveLocal")]
       : waiting || phase === "pending" || phase === "saving"
-        ? [<Spinner key="spin" size={14} />, "正在同步到后端"]
+        ? [<Spinner key="spin" size={14} />, t("settings.syncing")]
         : phase === "error"
-          ? [<CloudAlert key="alert" size={14} />, "同步到后端失败"]
+          ? [<CloudAlert key="alert" size={14} />, t("settings.syncFailed")]
           : phase === "synced"
-            ? [<Cloud key="done" size={14} />, "已同步到后端"]
-            : [<Cloud key="idle" size={14} />, "改动自动同步到后端"];
+            ? [<Cloud key="done" size={14} />, t("settings.synced")]
+            : [<Cloud key="idle" size={14} />, t("settings.autoSync")];
   return (
     <span
       role="status"
@@ -1217,8 +1271,7 @@ export function ThemeManage() {
     [sortedClients],
   );
 
-  // 后端实际存在的分组,按首页 Tab 的渲染顺序排列(已配置的在前,未排序的在后)。
-  // 用户直接拖动这个列表来调整顺序。
+  // 后端实际存在的分组，按首页 Tab 的渲染顺序排列（已配置的在前，未排序的在后），只用来展示。
   const availableGroups = useMemo(
     () => dedupeGroupLabels(sortedClients.map((client) => client.group)),
     [sortedClients],
@@ -1227,13 +1280,6 @@ export function ThemeManage() {
     () => sortHomeGroupOptions(availableGroups, draft.homeGroupOrder),
     [availableGroups, draft.homeGroupOrder],
   );
-  const moveGroup = (index: number, direction: -1 | 1) => {
-    const target = index + direction;
-    if (target < 0 || target >= orderedDraftGroups.length) return;
-    const next = [...orderedDraftGroups];
-    [next[index], next[target]] = [next[target], next[index]];
-    patch("homeGroupOrder", next);
-  };
 
   const filteredTasks = useMemo(() => {
     const keyword = taskSearch.trim().toLowerCase();
@@ -1389,7 +1435,7 @@ export function ThemeManage() {
       if (!acquiredAt || acquiredAt === localDateInputMax()) {
         const detail = premiumDetailByUuid.get(uuid);
         if (!detail) return null;
-        if (detail.note === "免费") return 0;
+        if (detail.kind === "free") return 0;
         return detail.counted ? detail.remainingCny : null;
       }
       return calculateCostPremiumBasisAt(
@@ -1502,7 +1548,7 @@ export function ThemeManage() {
     };
   }, [draft]);
 
-  // 只比较本页实际管理的设置。enableAdminButton/showPingChart 这类隐藏设置会通过
+  // 只比较本页实际管理的设置。showPingChart 这类隐藏设置会通过
   // baseSettings 在保存时保留,但不该让表单永远显示为 dirty。
   const draftSignature = useMemo(
     () => managedSettingsSignature(draftThemeSettings as ThemeSettings & Record<string, unknown>),
@@ -1616,12 +1662,12 @@ export function ThemeManage() {
     setError(null);
     if (await copyText(siteDefaultsJson)) {
       setCopied(true);
-      setMessage("配置 JSON 已复制，粘贴到后台「外观设置 → 主题自定义配置」保存即可成为所有设备的默认值");
+      setMessage(t("settings.copied"));
       window.setTimeout(() => setCopied(false), 2000);
       return;
     }
     setMessage(null);
-    setError("复制失败，请检查浏览器的剪贴板权限");
+    setError(t("settings.copyFailed"));
   };
 
   /**
@@ -1643,7 +1689,7 @@ export function ThemeManage() {
         withPreferredAppearance(config?.preferredAppearance, config?.theme_settings ?? {}),
       ),
     );
-    setMessage("已丢弃本机设置，改用后端当前的配置");
+    setMessage(t("settings.restoredSite"));
     setError(null);
   };
 
@@ -1668,10 +1714,10 @@ export function ThemeManage() {
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 text-center">
         <div role="alert" className="space-y-2">
           <div className="text-[15px] font-semibold text-[var(--text-primary)]">
-            无法读取主题配置
+            {t("settings.configError")}
           </div>
           <p className="max-w-[32rem] text-[13px] text-[var(--text-secondary)]">
-            {configError instanceof Error ? configError.message : "请稍后重试。"}
+            {configError instanceof Error ? configError.message : t("settings.tryLater")}
           </p>
         </div>
         <div className="flex flex-wrap items-center justify-center gap-2">
@@ -1680,10 +1726,10 @@ export function ThemeManage() {
             onClick={() => void refetchConfig()}
             className="control-button px-4 py-2 text-[13px] font-medium"
           >
-            重试
+            {t("common.retry")}
           </button>
           <Link to="/" className="control-button px-4 py-2 text-[13px] font-medium">
-            返回首页
+            {t("settings.backHome")}
           </Link>
         </div>
       </div>
@@ -1709,9 +1755,9 @@ export function ThemeManage() {
       <header className="theme-topbar">
         <Link to="/" className="instance-page-back theme-topbar-back">
           <ArrowLeft size={14} />
-          <span>返回首页</span>
+          <span>{t("settings.backHome")}</span>
         </Link>
-        <h1 className="theme-topbar-title">主题设置</h1>
+        <h1 className="theme-topbar-title">{t("settings.title")}</h1>
         <div className="theme-manage-toolbar-actions">
           {/* 两边都没有保存按钮了（停手就自动保存），「重置」退不回已经存下的改动，留着只会让人以为能撤销。
               填错了（不自动保存）把那一项改对即可。 */}
@@ -1722,12 +1768,12 @@ export function ThemeManage() {
               className="theme-manage-button"
               title={
                 canSaveToSite
-                  ? "放弃这台设备上还没同步到后端的改动（含配色、首页卡片上换过的线路），改用后端当前的配置"
-                  : "放弃本机存过的设置（含配色、首页卡片上换过的线路），改用后端当前的配置（后台「外观设置 → 主题自定义配置」下发的那份）"
+                  ? t("settings.useSiteTitleAdmin")
+                  : t("settings.useSiteTitleVisitor")
               }
             >
               <CloudDownload size={14} />
-              <span>改用后端配置</span>
+              <span>{t("settings.useSite")}</span>
             </button>
           )}
           {!canSaveToSite && (
@@ -1735,10 +1781,10 @@ export function ThemeManage() {
               type="button"
               onClick={() => void handleCopySiteDefaults()}
               className="theme-manage-button"
-              title="复制当前设置的 JSON；粘贴到后台「外观设置 → 主题自定义配置」即可让所有设备用同一套配置"
+              title={t("settings.copyJsonTitle")}
             >
               {copied ? <ClipboardCheck size={14} /> : <ClipboardCopy size={14} />}
-              <span>{copied ? "已复制" : "复制配置 JSON"}</span>
+              <span>{copied ? t("settings.copiedShort") : t("settings.copyJson")}</span>
             </button>
           )}
           <SiteSyncIndicator
@@ -1777,14 +1823,14 @@ export function ThemeManage() {
               role="alert"
               className="rounded-[12px] border border-[color-mix(in_srgb,var(--status-offline)_28%,transparent)] bg-[color-mix(in_srgb,var(--status-offline)_11%,var(--surface))] px-4 py-3 text-[13px] text-[var(--status-offline)]"
             >
-              无法读取后台 Ping 任务或节点列表: {adminError}
+              {t("settings.adminDataError", { error: adminError })}
             </div>
           )}
         </div>
       )}
 
       <div className="theme-manage-body" ref={bodyRef}>
-        <nav className="theme-tab-rail" aria-label="设置分组">
+        <nav className="theme-tab-rail" aria-label={t("settings.groupsNav")}>
           {THEME_TABS.map(({ id, label, hint, icon: Icon }) => (
             <button
               key={id}
@@ -1806,8 +1852,8 @@ export function ThemeManage() {
             <>
               <InstancePanel
                 id="set-appearance"
-                kicker="外观"
-                title="默认外观"
+                kicker={t("settings.kickerAppearance")}
+                title={t("settings.defaultAppearance")}
                 aside={<LayoutTemplate size={16} />}
               >
                 <div className="instance-segmented is-prominent is-even">
@@ -1817,7 +1863,10 @@ export function ThemeManage() {
                       type="button"
                       data-active={draft.defaultAppearance === value ? "true" : "false"}
                       aria-pressed={draft.defaultAppearance === value}
-                      onClick={() => patch("defaultAppearance", value)}
+                      onClick={() => {
+                        patch("defaultAppearance", value);
+                        followDefaultAppearance(value);
+                      }}
                       className="inline-flex items-center justify-center gap-2"
                     >
                       <Icon size={14} />
@@ -1829,18 +1878,18 @@ export function ThemeManage() {
 
               <InstancePanel
                 id="set-view"
-                kicker="视图"
-                title="默认卡片视图"
+                kicker={t("settings.kickerView")}
+                title={t("settings.defaultView")}
                 aside={<LayoutGrid size={16} />}
               >
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="surface-inset setting-segment-slot flex flex-col gap-3 px-4 py-4">
                     <div>
                       <div className="setting-subhead-title">
-                        桌面端默认
+                        {t("settings.desktopDefault")}
                       </div>
                       <div className="mt-1 setting-hint">
-                        适用于宽度大于 720px 的浏览器窗口。
+                        {t("settings.desktopDefaultHint")}
                       </div>
                     </div>
                     <div className="instance-segmented is-prominent is-even">
@@ -1862,10 +1911,10 @@ export function ThemeManage() {
                   <div className="surface-inset setting-segment-slot flex flex-col gap-3 px-4 py-4">
                     <div>
                       <div className="setting-subhead-title">
-                        移动端默认
+                        {t("settings.mobileDefault")}
                       </div>
                       <div className="mt-1 setting-hint">
-                        适用于宽度小于等于 720px 的手机或窄屏窗口。
+                        {t("settings.mobileDefaultHint")}
                       </div>
                     </div>
                     <div className="instance-segmented is-prominent is-even">
@@ -1888,16 +1937,51 @@ export function ThemeManage() {
               </InstancePanel>
 
               <InstancePanel
+                id="set-quick-controls"
+                kicker={t("settings.kickerQuick")}
+                title={t("settings.quickButtons")}
+                aside={<ToggleRight size={16} />}
+              >
+                <div className="grid gap-3 md:grid-cols-2">
+                  <ToggleRow
+                    field="quickShowAppearance"
+                    title={t("settings.quickAppearance")}
+                    checked={draft.quickShowAppearance}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="quickShowViewMode"
+                    title={t("settings.quickViewMode")}
+                    checked={draft.quickShowViewMode}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="quickShowColors"
+                    title={t("settings.quickColors")}
+                    checked={draft.quickShowColors}
+                    onPatch={patch}
+                  />
+                  <ToggleRow
+                    field="enableAdminButton"
+                    title={t("settings.quickAdmin")}
+                    checked={draft.enableAdminButton}
+                    onPatch={patch}
+                  />
+                </div>
+                <p className="mt-3 setting-hint">{t("settings.quickHint")}</p>
+              </InstancePanel>
+
+              <InstancePanel
                 id="set-opacity"
-                kicker="背景"
-                title="卡片透明度"
+                kicker={t("settings.kickerBackground")}
+                title={t("settings.cardOpacityTitle")}
                 aside={<Wallpaper size={16} />}
               >
                 <div className="flex flex-col gap-4">
                   <div className="surface-inset flex flex-col gap-3 px-4 py-4">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <span className="setting-subhead-title">
-                        卡片不透明度
+                        {t("settings.cardOpacity")}
                       </span>
                       <span className="inline-flex items-center gap-1.5">
                         <input
@@ -1914,20 +1998,18 @@ export function ThemeManage() {
                             if (!Number.isFinite(next)) return;
                             patch("surfaceOpacity", Math.min(100, Math.max(0, Math.round(next))));
                           }}
-                          aria-label="卡片不透明度百分比"
+                          aria-label={t("settings.cardOpacityAria")}
                           className="surface-inset w-20 px-3 py-2 text-right text-[13px] tabular outline-none"
                         />
                         <span className="text-[13px] font-medium text-[var(--text-tertiary)]">%</span>
                       </span>
                     </div>
                     <span className="setting-hint">
-                      输入 0–100 的整数。100 = 完全不透明，数值越低卡片越通透、越能透出站点背景图。
-                      低于 95 时会自动叠加一层可读性遮罩，保证文字清晰。
+                      {t("settings.cardOpacityHint")}
                     </span>
                   </div>
                   <div className="surface-inset px-4 py-3 setting-hint">
-                    要更换背景图、站点标题或站点图标，请到 <code>/admin#/admin</code> 的外观设置中修改，
-                    它们对所有主题统一生效。
+                    {t("settings.backgroundHintBefore")} <code>/admin#/admin</code>{t("settings.backgroundHintAfter")}
                   </div>
                 </div>
               </InstancePanel>
@@ -1938,68 +2020,49 @@ export function ThemeManage() {
             <>
               <InstancePanel
                 id="set-home-display"
-                kicker="显示"
-                title="首页显示项"
+                kicker={t("settings.kickerDisplay")}
+                title={t("settings.homeDisplay")}
                 aside={<ListFilter size={16} />}
               >
-                <div className="grid gap-3 md:grid-cols-3">
+                <div className="grid gap-3 md:grid-cols-2">
                   <ToggleRow
                     field="showHomeOverview"
-                    title="显示顶部总览"
-                    desc="展示时间、在线数、地区、流量和速率。"
+                    title={t("settings.showOverview")}
                     checked={draft.showHomeOverview}
                     onPatch={patch}
                   />
                   <ToggleRow
                     field="showAssetOverview"
-                    title="显示资产概览"
-                    desc="总览里那张写着每月花多少钱的卡片。不想把开销公开就关掉，其余总览卡不受影响。"
+                    title={t("settings.showAssetOverview")}
                     checked={draft.showAssetOverview}
                     onPatch={patch}
                   />
                   <ToggleRow
                     field="showGroupTabs"
-                    title="显示分组筛选"
-                    desc="根据后端节点分组生成首页 Tab。"
+                    title={t("settings.showGroupTabs")}
                     checked={draft.showGroupTabs}
                     onPatch={patch}
                   />
                   <ToggleRow
                     field="showRegionBar"
-                    title="显示地区筛选"
-                    desc="按节点地区生成国旗筛选栏，点击某地区只看该地区节点。"
+                    title={t("settings.showRegionTabs")}
                     checked={draft.showRegionBar}
                     onPatch={patch}
                   />
-                  <ToggleRow
-                    field="showCardGroup"
-                    title="卡片显示分组"
-                    desc="关闭后卡片内不再显示节点分组名（不影响分组筛选栏与备注）。"
-                    checked={draft.showCardGroup}
-                    onPatch={patch}
-                  />
-                  <ToggleRow
-                    field="showCardPrice"
-                    title="卡片显示价格"
-                    desc="关闭后大卡片内不再显示价格。"
-                    checked={draft.showCardPrice}
-                    onPatch={patch}
-                  />
                 </div>
-
               </InstancePanel>
 
               <InstancePanel
                 id="set-home-sort"
-                kicker="排序"
-                title="排序与分组"
+                kicker={t("settings.kickerSort")}
+                title={t("settings.sortAndGroup")}
                 aside={<ArrowUpDown size={16} />}
               >
                 {/* 开关和它决定的默认顺序放一起：拆开之后「关掉开关这两组还能不能设」就看不出来了。 */}
                 <ToggleRow
                   field="enableHomeSort"
-                  title="启用排序切换"
-                  desc="首页显示排序控件，访客可临时切换排序方式（离线节点恒定置底）。关掉后所有人都按下面定的顺序看。"
+                  title={t("settings.enableSort")}
+                  desc={t("settings.enableSortDesc")}
                   checked={draft.enableHomeSort}
                   onPatch={patch}
                 />
@@ -2008,7 +2071,7 @@ export function ThemeManage() {
                 <div className="setting-grid is-triple mt-4">
                   <div className="is-wide setting-segment-slot">
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">默认排序维度</span>
+                      <span className="setting-subhead-title">{t("settings.defaultSortField")}</span>
                     </div>
                     <div className="instance-segmented is-prominent is-even">
                       {HOME_SORT_FIELDS.map((field) => (
@@ -2019,14 +2082,14 @@ export function ThemeManage() {
                           aria-pressed={draft.homeSortField === field}
                           onClick={() => patch("homeSortField", field)}
                         >
-                          {HOME_SORT_FIELD_LABELS[field]}
+                          {homeSortFieldLabel(field)}
                         </button>
                       ))}
                     </div>
                   </div>
                   <div>
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">默认方向</span>
+                      <span className="setting-subhead-title">{t("settings.defaultDirection")}</span>
                     </div>
                     <div className="instance-segmented is-prominent is-even">
                       <button
@@ -2035,7 +2098,7 @@ export function ThemeManage() {
                         aria-pressed={draft.homeSortDirection === "asc"}
                         onClick={() => patch("homeSortDirection", "asc")}
                       >
-                        升序
+                        {t("settings.ascending")}
                       </button>
                       <button
                         type="button"
@@ -2043,22 +2106,22 @@ export function ThemeManage() {
                         aria-pressed={draft.homeSortDirection === "desc"}
                         onClick={() => patch("homeSortDirection", "desc")}
                       >
-                        降序
+                        {t("settings.descending")}
                       </button>
                     </div>
                   </div>
                   <div>
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">离线节点</span>
+                      <span className="setting-subhead-title">{t("settings.offlineNodes")}</span>
                     </div>
-                    <div className="instance-segmented is-prominent is-even" role="group" aria-label="离线节点位置">
+                    <div className="instance-segmented is-prominent is-even" role="group" aria-label={t("settings.offlinePosition")}>
                       <button
                         type="button"
                         data-active={!draft.offlineNodesFirst ? "true" : "false"}
                         aria-pressed={!draft.offlineNodesFirst}
                         onClick={() => patch("offlineNodesFirst", false)}
                       >
-                        排在最后
+                        {t("settings.offlineLast")}
                       </button>
                       <button
                         type="button"
@@ -2066,25 +2129,25 @@ export function ThemeManage() {
                         aria-pressed={draft.offlineNodesFirst}
                         onClick={() => patch("offlineNodesFirst", true)}
                       >
-                        排在最前
+                        {t("settings.offlineFirst")}
                       </button>
                     </div>
                   </div>
                   <div className="min-w-0">
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">默认分组</span>
+                      <span className="setting-subhead-title">{t("settings.defaultGroup")}</span>
                     </div>
                     <SettingSelect
                       value={draft.homeDefaultGroup}
                       onChange={(event) => patch("homeDefaultGroup", event.target.value)}
-                      aria-label="默认分组"
+                      aria-label={t("settings.defaultGroup")}
                     >
-                      <option value="">全部（不指定）</option>
+                      <option value="">{t("settings.defaultGroupAll")}</option>
                       {/* 站点换过分组名时，存着的那个值仍列出来，免得选中项凭空消失。 */}
                       {draft.homeDefaultGroup !== "" &&
                         !availableGroups.includes(draft.homeDefaultGroup) && (
                           <option value={draft.homeDefaultGroup}>
-                            {draft.homeDefaultGroup}（当前没有这个分组）
+                            {t("settings.groupMissing", { group: draft.homeDefaultGroup })}
                           </option>
                         )}
                       {availableGroups.map((group) => (
@@ -2097,70 +2160,45 @@ export function ThemeManage() {
                 </div>
 
                 <p className="mt-3 setting-hint">
-                  以上是访客首次打开首页时看到的顺序与分组；访客临时改过的排序只在他自己的标签页里有效。
+                  {t("settings.sortHint")}
                 </p>
 
+                {/* 分组顺序和地区一样在首页直接拖（v1.2.22 起分组栏也能拖）；这里只留查看和恢复默认。 */}
                 <div className="mt-4">
                   <div className="setting-subhead">
-                    <span className="setting-subhead-title">分组排序</span>
+                    <span className="setting-subhead-title">{t("settings.groupOrder")}</span>
                     <span className="setting-hint">
-                      调整首页分组 Tab 的显示顺序；未列出的分组按后端顺序排在后面。
+                      {t("settings.groupOrderHint")}
                     </span>
                   </div>
-                  {orderedDraftGroups.length === 0 ? (
-                    <p className="surface-inset mt-2 px-4 py-3 text-[12px] text-[var(--text-tertiary)]">
-                      {clientsLoading ? "正在加载分组…" : "暂无分组（节点未设置分组时无需排序）"}
-                    </p>
-                  ) : (
-                    <ul className="mt-2 flex flex-col gap-2">
-                      {orderedDraftGroups.map((group, index) => (
-                        <li
-                          key={group}
-                          className="surface-inset flex items-center justify-between gap-3 px-4 py-2.5"
-                        >
-                          <span className="flex min-w-0 items-center gap-2">
-                            <span className="tabular text-[12px] text-[var(--text-tertiary)]">
-                              {index + 1}
-                            </span>
-                            <span
-                              className="truncate text-[13px] text-[var(--text-primary)]"
-                              title={group}
-                            >
-                              {group}
-                            </span>
-                          </span>
-                          <span className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={index === 0}
-                              onClick={() => moveGroup(index, -1)}
-                              className="theme-manage-button is-compact"
-                              aria-label={`上移 ${group}`}
-                            >
-                              <ChevronUp size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={index === orderedDraftGroups.length - 1}
-                              onClick={() => moveGroup(index, 1)}
-                              className="theme-manage-button is-compact"
-                              aria-label={`下移 ${group}`}
-                            >
-                              <ChevronDown size={14} />
-                            </button>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
+                  <div className="surface-inset mt-2 flex items-center justify-between gap-3 px-4 py-2.5">
+                    <span
+                      className="truncate text-[13px] text-[var(--text-primary)]"
+                      title={orderedDraftGroups.join(" → ")}
+                    >
+                      {orderedDraftGroups.length > 0
+                        ? orderedDraftGroups.join(" → ")
+                        : clientsLoading
+                          ? t("settings.groupsLoading")
+                          : t("settings.groupsEmpty")}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={draft.homeGroupOrder.length === 0}
+                      onClick={() => patch("homeGroupOrder", [])}
+                      className="theme-manage-button is-compact shrink-0"
+                    >
+                      {t("switcher.reset")}
+                    </button>
+                  </div>
                 </div>
 
                 {/* 地区顺序在首页地区栏上直接拖（站长提的：拖比在这里上下点直观）；这里只留查看和恢复默认。 */}
                 <div className="mt-4">
                   <div className="setting-subhead">
-                    <span className="setting-subhead-title">地区排序</span>
+                    <span className="setting-subhead-title">{t("settings.regionOrder")}</span>
                     <span className="setting-hint">
-                      在首页按住地区标签直接拖动（手机上先长按）；新出现的地区按默认规则排在后面。
+                      {t("settings.regionOrderHint")}
                     </span>
                   </div>
                   <div className="surface-inset mt-2 flex items-center justify-between gap-3 px-4 py-2.5">
@@ -2170,7 +2208,7 @@ export function ThemeManage() {
                     >
                       {draft.homeRegionOrder.length > 0
                         ? draft.homeRegionOrder.join(" → ")
-                        : "默认：中国大陆、港澳台、新加坡、日本、美国、欧洲、其他"}
+                        : t("settings.regionOrderDefault")}
                     </span>
                     <button
                       type="button"
@@ -2178,7 +2216,7 @@ export function ThemeManage() {
                       onClick={() => patch("homeRegionOrder", [])}
                       className="theme-manage-button is-compact shrink-0"
                     >
-                      恢复默认
+                      {t("switcher.reset")}
                     </button>
                   </div>
                 </div>
@@ -2187,22 +2225,22 @@ export function ThemeManage() {
 
               <InstancePanel
                 id="set-home-ratings"
-                kicker="评级"
-                title="总览评级"
+                kicker={t("settings.kickerRating")}
+                title={t("settings.overviewRating")}
                 aside={<Sparkles size={16} />}
               >
                 <div className="surface-inset px-4 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <span className="min-w-0">
                       <span className="block setting-subhead-title">
-                        三处总览
+                        {t("settings.ratingAll")}
                       </span>
                       <span className="mt-1 block setting-hint">
-                        关掉这里，三处评级一起不显示。
+                        {t("settings.ratingAllHint")}
                       </span>
                     </span>
                     <label className="inline-flex shrink-0 items-center gap-2 setting-field-label">
-                      <span>启用</span>
+                      <span>{t("settings.enable")}</span>
                       <input
                         type="checkbox"
                         checked={draft.showOverviewRatings}
@@ -2233,7 +2271,7 @@ export function ThemeManage() {
                             disabled={!ratingEnabled}
                             onChange={(event) => setRatingLabelDraft(field.key, event.target.value)}
                             placeholder={defaultLabel}
-                            aria-label={`${field.title}评级名称`}
+                            aria-label={t("settings.ratingNames", { field: field.title })}
                             className="surface-inset w-full px-3 py-2 text-[13px] outline-none disabled:opacity-60"
                           />
                         </div>
@@ -2245,23 +2283,22 @@ export function ThemeManage() {
 
               <InstancePanel
                 id="set-hidden"
-                kicker="隐藏"
-                title="隐藏节点"
+                kicker={t("settings.kickerHidden")}
+                title={t("settings.hiddenNodes")}
                 aside={<EyeOff size={16} />}
               >
                 <label className="flex min-w-0 flex-col gap-2">
                   <span className="setting-field-label">
-                    隐藏列表
+                    {t("settings.hiddenList")}
                   </span>
                   <textarea
                     value={draft.hiddenNodesText}
                     onChange={(event) => patch("hiddenNodesText", event.target.value)}
-                    placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
+                    placeholder={t("settings.perLinePlaceholder")}
                     className="surface-inset min-h-[112px] w-full resize-y px-3 py-2 text-[13px] outline-none"
                   />
                   <span className="setting-hint">
-                    已隐藏 {draftHiddenNodes.length} 个节点。按名称或 UUID 匹配、大小写不敏感；隐藏的节点
-                    不显示卡片，也不计入在线数、流量、带宽与资产等任何统计，清空即恢复。
+                    {t("settings.hiddenHint", { n: draftHiddenNodes.length })}
                   </span>
                 </label>
               </InstancePanel>
@@ -2272,22 +2309,30 @@ export function ThemeManage() {
             <>
               <InstancePanel
                 id="set-card"
-                kicker="卡片"
-                title="卡片显示项"
+                kicker={t("settings.kickerCard")}
+                title={t("settings.cardItems")}
                 aside={<Rows3 size={16} />}
               >
                 <div>
                   <div className="setting-subhead">
-                    <span className="setting-subhead-title">跨视图设置</span>
-                    <span className="setting-hint">
-                      适用于多个卡片尺寸，具体范围以每项说明为准。
-                    </span>
+                    <span className="setting-subhead-title">{t("settings.crossView")}</span>
                   </div>
                   <div className="mt-2 grid gap-3 md:grid-cols-2">
                     <ToggleRow
+                      field="showCardGroup"
+                      title={t("settings.showCardGroup")}
+                      checked={draft.showCardGroup}
+                      onPatch={patch}
+                    />
+                    <ToggleRow
+                      field="showCardPrice"
+                      title={t("settings.showCardPrice")}
+                      checked={draft.showCardPrice}
+                      onPatch={patch}
+                    />
+                    <ToggleRow
                       field="showConnections"
-                      title="显示连接数（TCP/UDP）"
-                      desc="在大卡片与小卡片展示实时 TCP / UDP 连接数；需被控端上报，未上报显示 0。默认关闭。"
+                      title={t("settings.showConnections")}
                       checked={draft.showConnections}
                       onPatch={patch}
                     />
@@ -2296,30 +2341,24 @@ export function ThemeManage() {
 
                 <div className="mt-4">
                   <div className="setting-subhead">
-                    <span className="setting-subhead-title">小卡片专属</span>
-                    <span className="setting-hint">
-                      控制小卡片中间信息块的密度；实时速率始终显示。
-                    </span>
+                    <span className="setting-subhead-title">{t("settings.compactOnly")}</span>
                   </div>
                   <div className="mt-2 grid gap-3 md:grid-cols-2">
                     <ToggleRow
                       field="compactShowTrafficTotal"
-                      title="显示累计流量"
-                      desc="展示出站与入站累计流量。"
+                      title={t("settings.showTrafficTotal")}
                       checked={draft.compactShowTrafficTotal}
                       onPatch={patch}
                     />
                     <ToggleRow
                       field="compactShowBilling"
-                      title="显示费用到期"
-                      desc="展示续费价格与剩余天数。"
+                      title={t("settings.showBilling")}
                       checked={draft.compactShowBilling}
                       onPatch={patch}
                     />
                     <ToggleRow
                       field="compactShowUptime"
-                      title="显示在线时间"
-                      desc="在小卡片流量栏右侧展示在线时长。默认开启。"
+                      title={t("settings.showUptime")}
                       checked={draft.compactShowUptime}
                       onPatch={patch}
                     />
@@ -2340,15 +2379,14 @@ export function ThemeManage() {
             <>
               <InstancePanel
                 id="set-cost"
-                kicker="花费"
-                title="服务器花费"
+                kicker={t("settings.kickerCost")}
+                title={t("settings.serverCost")}
                 aside={<CircleDollarSign size={16} />}
               >
                 {/* 和「排序与分组」同一套：开关整行在上，字段两列、标题在上，说明收到最下面一行。 */}
                 <ToggleRow
                   field="showCostSummary"
-                  title="显示资产统计入口"
-                  desc="资产概览卡在就放卡内，不在就悬浮在右下角。关掉后访问资产页会跳回首页。"
+                  title={t("settings.showCostSummary")}
                   checked={draft.showCostSummary}
                   onPatch={patch}
                 />
@@ -2356,10 +2394,10 @@ export function ThemeManage() {
                 <div className="setting-grid mt-4">
                   <div className="min-w-0">
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">续费提醒</span>
+                      <span className="setting-subhead-title">{t("settings.renewalReminder")}</span>
                     </div>
                     <label className="surface-inset setting-control flex items-center gap-2 px-3">
-                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">到期前</span>
+                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">{t("settings.renewalBefore")}</span>
                       <input
                         type="number"
                         min={0}
@@ -2376,67 +2414,66 @@ export function ThemeManage() {
                             Math.min(MAX_RENEWAL_REMINDER_DAYS, Math.max(0, Math.round(next))),
                           );
                         }}
-                        aria-label="续费提醒天数"
+                        aria-label={t("settings.renewalDaysAria")}
                         className="min-w-0 flex-1 bg-transparent py-2 text-right text-[13px] tabular text-[var(--text-primary)] outline-none"
                       />
-                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">天</span>
+                      <span className="shrink-0 text-[13px] text-[var(--text-secondary)]">{t("settings.daysUnit")}</span>
                     </label>
                   </div>
                   <div className="min-w-0">
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">实时汇率接口</span>
+                      <span className="setting-subhead-title">{t("settings.rateApi")}</span>
                     </div>
                     <input
                       value={draft.costRateApiUrl}
                       onChange={(event) => patch("costRateApiUrl", event.target.value)}
                       placeholder={DEFAULT_THEME_SETTINGS.costRateApiUrl}
                       aria-invalid={draftCostRateApiUrlInvalid}
-                      aria-label="实时汇率接口"
+                      aria-label={t("settings.rateApi")}
                       className="surface-inset setting-control px-3 py-2 text-[13px] outline-none"
                     />
                     {draftCostRateApiUrlInvalid && (
                       <span className="mt-2 block text-[12px] text-[var(--status-offline)]">
-                        请输入 http(s) 链接，保存后将回退默认接口
+                        {t("settings.rateApiInvalid")}
                       </span>
                     )}
                   </div>
                   <div className="is-wide min-w-0">
                     <div className="setting-subhead">
-                      <span className="setting-subhead-title">忽略计费节点</span>
+                      <span className="setting-subhead-title">{t("settings.ignoredNodes")}</span>
                     </div>
                     <textarea
                       value={draft.costIgnoredText}
                       onChange={(event) => patch("costIgnoredText", event.target.value)}
-                      placeholder="每行一个节点名称 / UUID，也可以用逗号分隔"
-                      aria-label="忽略计费节点"
+                      placeholder={t("settings.perLinePlaceholder")}
+                      aria-label={t("settings.ignoredNodes")}
                       className="surface-inset setting-control block min-h-[88px] resize-y px-3 py-2 text-[13px] outline-none"
                     />
                   </div>
                 </div>
 
                 <p className="mt-3 setting-hint">
-                  续费提醒显示在资产概览卡上，填 0 就不提醒；汇率接口留空用默认；忽略的节点不计入资产统计。
+                  {t("settings.costHint")}
                 </p>
               </InstancePanel>
 
               <InstancePanel
                 id="set-premium"
-                kicker="溢价"
-                title="收购溢价"
+                kicker={t("settings.kickerPremium")}
+                title={t("settings.purchasePremium")}
                 aside={<Coins size={16} />}
               >
                 <div className="flex flex-col gap-3">
                     <p className="setting-hint">
-                      按收购日的剩余价值回算并固化溢价（收购价 − 当日剩余价值，可正可负），之后续费与汇率
-                      变化都不改写；改收购日期会重算，留空即清除记录。已设置 {premiumConfiguredCount} 个节点。
+                      {t("settings.premiumHint", { n: premiumConfiguredCount })}
                     </p>
                     <label className="surface-inset flex items-center gap-2 px-3 py-2">
                       <Search size={14} className="text-[var(--text-tertiary)]" />
                       <input
                         value={premiumSearch}
                         onChange={(event) => setPremiumSearch(event.target.value)}
-                        placeholder="搜索节点名称 / UUID / 分组 / 地区"
-                        aria-label="搜索节点"
+                        placeholder={t("settings.searchNodesPlaceholder")}
+                        aria-label={t("settings.searchNodes")}
                         className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
                       />
                     </label>
@@ -2449,13 +2486,13 @@ export function ThemeManage() {
 
                     {!clientsLoading && sortedClients.length === 0 && (
                       <div className="theme-manage-empty-state">
-                        <span>还没有任何节点。</span>
+                        <span>{t("settings.noNodesYet")}</span>
                       </div>
                     )}
 
                     {!clientsLoading && sortedClients.length > 0 && filteredPremiumClients.length === 0 && (
                       <div className="surface-inset px-4 py-5 text-[13px] text-[var(--text-secondary)]">
-                        没有匹配的节点。
+                        {t("settings.noMatchingNodes")}
                       </div>
                     )}
 
@@ -2479,8 +2516,8 @@ export function ThemeManage() {
             <>
               <InstancePanel
                 id="set-ping"
-                kicker="线路"
-                title="主页延迟检测"
+                kicker={t("settings.kickerLines")}
+                title={t("settings.homeLatency")}
                 aside={<Activity size={16} />}
               >
                 <div className="flex flex-col gap-4">
@@ -2489,12 +2526,13 @@ export function ThemeManage() {
                   <div className="surface-inset px-4 py-4">
                     <div className="min-w-0">
                       <span className="block setting-subhead-title">
-                        大卡片 / 小卡片显示
+                        {t("settings.largeCompactDisplay")}
                       </span>
                       <span className="mt-1 block setting-hint">
-                        迷你卡片与列表放不下多行，始终按单线路显示，不受这里影响。探测线路由后端固定，
-                        共 {sortedTasks.length} 条；没配探测目标的线路没有数据。
+                        {t("settings.largeCompactHint", { n: sortedTasks.length })}
                       </span>
+                      {/* 卡片上点线路名能换线路，设置页这里提一句，不然只有碰巧点到的人才知道（站长 2026-10-21）。 */}
+                      <span className="mt-1 block setting-hint">{t("settings.cardSwitchHint")}</span>
                     </div>
                     {/* 整行、等宽、强调色实心：这是本板块的总开关，得一眼看出选中的是哪种。 */}
                     <div className="instance-segmented is-prominent mt-3">
@@ -2523,10 +2561,10 @@ export function ThemeManage() {
                       <div className="mt-4 border-t border-[var(--hairline)] pt-4">
                         <div className="setting-subhead">
                           <span className="setting-field-label">
-                            显示这些线路（按顺序）
+                            {t("settings.showTheseLines")}
                           </span>
                           <span className="setting-hint">
-                            已选 {draft.homepageMultiPingTaskIds.length} / {multiPingSlotLimit} 条
+                            {t("settings.selectedLines", { n: draft.homepageMultiPingTaskIds.length, max: multiPingSlotLimit })}
                           </span>
                         </div>
                         {/* 槽位数量跟着已选条数走。「移除」是紧挨着下拉框的小 × ——
@@ -2540,7 +2578,7 @@ export function ThemeManage() {
                                 htmlFor={`multi-ping-slot-${slot}`}
                                 className="mb-1.5 block setting-field-label"
                               >
-                                线路 {slot + 1}
+                                {t("settings.lineSlot", { n: slot + 1 })}
                               </label>
                               <div className="flex items-center gap-1.5">
                                 <SettingSelect
@@ -2553,7 +2591,7 @@ export function ThemeManage() {
                                 >
                                   {!sortedTasks.some((task) => task.id === selectedTaskId) && (
                                     <option value={selectedTaskId}>
-                                      任务 #{selectedTaskId}（当前不可用）
+                                      {t("settings.taskUnavailable", { n: selectedTaskId })}
                                     </option>
                                   )}
                                   {sortedTasks.map((task) => {
@@ -2561,8 +2599,8 @@ export function ThemeManage() {
                                     const swapsWith = task.id !== selectedTaskId ? usedAt : -1;
                                     return (
                                       <option key={task.id} value={task.id}>
-                                        {`${task.name || `任务 #${task.id}`}${
-                                          swapsWith >= 0 ? `（与线路 ${swapsWith + 1} 互换）` : ""
+                                        {`${task.name || t("ping.taskN", { n: task.id })}${
+                                          swapsWith >= 0 ? t("settings.swapWith", { n: swapsWith + 1 }) : ""
                                         }`}
                                       </option>
                                     );
@@ -2575,8 +2613,8 @@ export function ThemeManage() {
                                     draft.homepageMultiPingTaskIds.length <=
                                     HOMEPAGE_MULTI_PING_MIN_COUNT
                                   }
-                                  aria-label={`移除线路 ${slot + 1}`}
-                                  title="移除这条线路"
+                                  aria-label={t("settings.removeLineAria", { n: slot + 1 })}
+                                  title={t("settings.removeLine")}
                                   className="surface-inset flex h-[38px] w-[38px] shrink-0 items-center justify-center text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-error)] hover:text-[var(--status-error)] disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:border-[var(--hairline)] disabled:hover:text-[var(--text-tertiary)]"
                                 >
                                   <X size={14} />
@@ -2597,7 +2635,7 @@ export function ThemeManage() {
                             className="theme-manage-button is-compact"
                           >
                             <Plus size={13} />
-                            添加线路
+                            {t("settings.addLine")}
                           </button>
                           <span
                             className={clsx(
@@ -2609,15 +2647,14 @@ export function ThemeManage() {
                             role={draftMultiPingInvalid ? "alert" : undefined}
                           >
                             {draftMultiPingInvalid
-                              ? "至少选 1 条线路后再保存，否则会回退到单线路模式。"
-                              : "某条线路没有节点样本时保留该行并显示“无样本”。"}
+                              ? t("settings.multiPingInvalid")
+                              : t("settings.multiPingHint")}
                           </span>
                         </div>
                       </div>
                     ) : (
                       <p className="mt-4 border-t border-[var(--hairline)] pt-4 setting-hint">
-                        每台节点只显示一条线路，用下面「单线路设置」里的默认线路；个别节点想看别的线路，
-                        用下面的「逐节点指定线路」。
+                        {t("settings.singleModeHint")}
                       </p>
                     )}
                   </div>
@@ -2626,12 +2663,12 @@ export function ThemeManage() {
                   <div className="surface-inset px-4 py-4">
                     <div className="min-w-0">
                       <span className="block setting-subhead-title">
-                        单线路设置
+                        {t("settings.singleSettings")}
                       </span>
                       <span className="mt-1 block setting-hint">
                         {draft.enableHomepageMultiPing
-                          ? "大/小卡片当前走多线路，用不到这组；迷你卡片与列表仍按单线路显示。"
-                          : "作用于所有视图。"}
+                          ? t("settings.singleSettingsMultiHint")
+                          : t("settings.singleSettingsAllHint")}
                       </span>
                     </div>
 
@@ -2640,13 +2677,30 @@ export function ThemeManage() {
                     <div className="mt-4 border-t border-[var(--hairline)] pt-4">
                           <div className="setting-subhead">
                             <span className="setting-field-label">
-                              默认线路
+                              {t("settings.defaultLine")}
                             </span>
                             <span className="setting-hint">
-                              没单独指定的节点都走这条
+                              {t("settings.defaultLineNote")}
                             </span>
                           </div>
-                          <div className="instance-segmented is-prominent" role="group" aria-label="默认线路">
+                          <div className="setting-segment-slot">
+                          <div
+                            className="instance-segmented is-prominent is-columns"
+                            role="group"
+                            aria-label={t("settings.defaultLine")}
+                            style={
+                              {
+                                "--segment-columns": segmentColumns(
+                                  sortedTasks.length +
+                                    (sortedTasks.some(
+                                      (task) => task.id === draft.homepageDefaultPingTaskId,
+                                    )
+                                      ? 0
+                                      : 1),
+                                ),
+                              } as CSSProperties
+                            }
+                          >
                             {!sortedTasks.some(
                               (task) => task.id === draft.homepageDefaultPingTaskId,
                             ) && (
@@ -2657,7 +2711,7 @@ export function ThemeManage() {
                                 disabled
                                 className="inline-flex items-center justify-center"
                               >
-                                任务 #{draft.homepageDefaultPingTaskId}（当前不可用）
+                                {t("settings.taskUnavailable", { n: draft.homepageDefaultPingTaskId })}
                               </button>
                             )}
                             {sortedTasks.map((task) => {
@@ -2671,13 +2725,14 @@ export function ThemeManage() {
                                   onClick={() => patch("homepageDefaultPingTaskId", task.id)}
                                   className="inline-flex items-center justify-center"
                                 >
-                                  {task.name || `任务 #${task.id}`}
+                                  {task.name || t("ping.taskN", { n: task.id })}
                                 </button>
                               );
                             })}
                           </div>
+                          </div>
                           <p className="mt-2 setting-hint">
-                            新加的节点也自动跟着它，不用回来一台台绑；个别节点想看别的线路，用下面的「逐节点指定线路」。
+                            {t("settings.defaultLineHint")}
                           </p>
                         </div>
                   </div>
@@ -2686,22 +2741,21 @@ export function ThemeManage() {
 
               <InstancePanel
                 id="set-ping-bindings"
-                kicker="绑定"
-                title="逐节点指定线路"
+                kicker={t("settings.kickerBinding")}
+                title={t("settings.perNodeLine")}
                 aside={<Network size={16} />}
               >
                 <div className="flex flex-col gap-3">
                   <p className="setting-hint">
-                    没指定的节点都走上面的默认线路；迷你卡片与列表始终按单线路显示，这里指定的对它们同样生效。
-                    已单独指定 {assignedNodeCount} / {sortedClients.length} 台。
+                    {t("settings.perNodeHint", { n: assignedNodeCount, total: sortedClients.length })}
                   </p>
                   <label className="surface-inset mb-3 flex items-center gap-2 px-3 py-2">
                     <Search size={14} className="text-[var(--text-tertiary)]" />
                     <input
                       value={taskSearch}
                       onChange={(event) => setTaskSearch(event.target.value)}
-                      placeholder="搜索线路名称"
-                      aria-label="搜索线路"
+                      placeholder={t("settings.searchLinesPlaceholder")}
+                      aria-label={t("settings.searchLines")}
                       className="min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-[var(--text-tertiary)]"
                     />
                   </label>
@@ -2715,13 +2769,13 @@ export function ThemeManage() {
 
                     {noTasksYet && (
                       <div className="theme-manage-empty-state">
-                        <span>没有可用的探测线路。</span>
+                        <span>{t("settings.noLines")}</span>
                       </div>
                     )}
 
                     {noFilteredTaskMatch && (
                       <div className="px-1 py-3 text-[13px] text-[var(--text-secondary)]">
-                        没有匹配的线路。
+                        {t("settings.noMatchingLines")}
                       </div>
                     )}
 

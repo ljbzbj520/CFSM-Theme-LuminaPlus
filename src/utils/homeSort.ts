@@ -1,3 +1,4 @@
+import { compareText, t } from "@/i18n";
 import type { HomeNodeSummary } from "@/services/wsStore";
 
 // 首页临时排序；默认使用后端 weight，离线节点始终沉底。
@@ -13,13 +14,14 @@ export const HOME_SORT_FIELDS: readonly HomeSortField[] = [
   "price",
 ];
 
-export const HOME_SORT_FIELD_LABELS: Record<HomeSortField, string> = {
-  default: "默认",
-  name: "名称",
-  speed: "实时网速",
-  traffic: "累计流量",
-  price: "价格",
-};
+export function homeSortFieldLabel(field: HomeSortField): string {
+  return t(`homeSort.${field}`);
+}
+
+/** 首页排序按钮上显示的短名：和分组栏同一行，西语「Predeterminado」这种长词在手机上会把分组栏挤得要横滑。展开的选项里仍用全名。 */
+export function homeSortFieldShortLabel(field: HomeSortField): string {
+  return t(`homeSort.short.${field}`);
+}
 
 // 每个维度的自然默认方向:文本升序(A→Z),数值降序(高的在前)。
 export const HOME_SORT_NATURAL_DIRECTION: Record<HomeSortField, HomeSortDirection> = {
@@ -113,7 +115,7 @@ export function sortHomeNodes(
       if (a.segment === 0) {
         const cmp =
           typeof a.primary === "string" || typeof b.primary === "string"
-            ? String(a.primary).localeCompare(String(b.primary), "zh-CN")
+            ? compareText(String(a.primary), String(b.primary))
             : a.primary - b.primary;
         if (cmp !== 0) return cmp * factor;
       }

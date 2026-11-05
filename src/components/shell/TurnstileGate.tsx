@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Spinner } from "@/components/ui/Spinner";
@@ -53,7 +54,7 @@ function loadTurnstileScript(): Promise<void> {
     script.onload = () => resolve();
     script.onerror = () => {
       scriptPromise = null;
-      reject(new Error("Turnstile 脚本加载失败"));
+      reject(new Error(t("turnstile.scriptFailed")));
     };
     document.head.append(script);
   });
@@ -101,11 +102,11 @@ export function TurnstileGate() {
         setTurnstileToken(token);
         await getSiteConfig();
         if (!getTurnstileVerified()) {
-          throw new Error("验证未通过，请重试");
+          throw new Error(t("turnstile.rejected"));
         }
         await queryClient.invalidateQueries();
       } catch (submitError) {
-        setError(submitError instanceof Error ? submitError.message : "验证失败");
+        setError(submitError instanceof Error ? submitError.message : t("turnstile.failed"));
       } finally {
         setVerifying(false);
       }
@@ -126,13 +127,13 @@ export function TurnstileGate() {
           callback: (token) => {
             void submitToken(token);
           },
-          "error-callback": () => setError("人机验证组件加载失败"),
-          "expired-callback": () => setError("验证已过期，请重新完成验证"),
+          "error-callback": () => setError(t("turnstile.widgetFailed")),
+          "expired-callback": () => setError(t("turnstile.expired")),
         });
       })
       .catch((loadError: unknown) => {
         if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "验证组件加载失败");
+          setError(loadError instanceof Error ? loadError.message : t("turnstile.widgetFailed"));
         }
       });
 
@@ -157,10 +158,10 @@ export function TurnstileGate() {
       <div className="surface-inset flex w-[min(22rem,90vw)] flex-col items-center gap-4 px-6 py-7 text-center">
         <div className="space-y-1.5">
           <div className="text-[15px] font-semibold text-[var(--text-primary)]">
-            请完成人机验证
+            {t("turnstile.title")}
           </div>
           <p className="text-[13px] text-[var(--text-secondary)]">
-            本站开启了 Cloudflare Turnstile 验证，通过后即可查看节点数据。
+            {t("turnstile.hint")}
           </p>
         </div>
         <div ref={containerRef} />
@@ -176,7 +177,7 @@ export function TurnstileGate() {
             onClick={retry}
             className="control-button px-4 py-2 text-[13px] font-medium"
           >
-            重试
+            {t("common.retry")}
           </button>
         )}
       </div>

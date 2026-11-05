@@ -42,6 +42,9 @@ export interface ResolvedThemeSettings {
   desktopNodeViewMode: NodeViewMode;
   mobileNodeViewMode: NodeViewMode;
   enableAdminButton: boolean;
+  quickShowAppearance: boolean;
+  quickShowViewMode: boolean;
+  quickShowColors: boolean;
   showPingChart: boolean;
   homepagePingBindings: HomepagePingTaskBindings;
   homepageDefaultPingTaskId: number;
@@ -94,6 +97,9 @@ export const DEFAULT_THEME_SETTINGS: ResolvedThemeSettings = {
   desktopNodeViewMode: "large",
   mobileNodeViewMode: "compact",
   enableAdminButton: true,
+  quickShowAppearance: true,
+  quickShowViewMode: true,
+  quickShowColors: true,
   showPingChart: true,
   homepagePingBindings: {},
   homepageDefaultPingTaskId: DEFAULT_HOMEPAGE_PING_TASK_ID,
@@ -279,6 +285,9 @@ export function normalizeThemeSettings(
       DEFAULT_THEME_SETTINGS.mobileNodeViewMode,
     ),
     enableAdminButton: enabledUnlessFalse(settings?.enableAdminButton),
+    quickShowAppearance: enabledUnlessFalse(settings?.quickShowAppearance),
+    quickShowViewMode: enabledUnlessFalse(settings?.quickShowViewMode),
+    quickShowColors: enabledUnlessFalse(settings?.quickShowColors),
     showPingChart: enabledUnlessFalse(settings?.showPingChart),
     homepagePingBindings: normalizeHomepagePingTaskBindings(settings?.homepagePingBindings),
     // 单线路模式下「没单独绑过的节点显示哪条」。写死电信时，全站绑联通的站点每加一台新节点

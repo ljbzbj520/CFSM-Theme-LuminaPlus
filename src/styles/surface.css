@@ -846,6 +846,7 @@ body::after {
   .instance-segmented.is-even:has(> button:nth-child(5):last-child) > button:nth-child(n + 4) {
     grid-column: span 3;
   }
+
 }
 
 /* 选项多的字段（默认排序维度有 5 个）独占一行，剩下的三项并排，高度才齐。 */
@@ -1074,6 +1075,25 @@ body::after {
 /* 说明文字只在桌面端的竖排导航里出现，手机上横滑标签放不下。 */
 .theme-tab-hint {
   display: none;
+}
+
+/* 横排时五个分组平分一行：按内容宽度排的话 375 宽的手机上最后一个「延迟」被切掉一半，要横滑才看得到。
+   屏幕再窄、平分后放不下内容时，标签不会缩到比内容窄，照旧横滑。 */
+@media (max-width: 899px) {
+  .theme-tab {
+    flex: 1 1 0;
+    justify-content: center;
+    gap: 5px;
+    padding-inline: 6px;
+  }
+}
+
+/* 英文 / 西语的分组名比中文长，带着图标五个放不下（375 宽要 410~430px），窄屏下只留文字；中文照旧带图标。
+   `lang` 由 i18n 的 setLanguage 写在 <html> 上。 */
+@media (max-width: 899px) {
+  html:not(:lang(zh)) .theme-tab-icon {
+    display: none;
+  }
 }
 
 @media (min-width: 900px) {
@@ -1688,6 +1708,26 @@ body::after {
   font-size: 13px;
 }
 
+/* 选项多的（默认线路最多 8 条）按固定列数排成整齐的几行。flex 换行时放不下的那一个会独占一整行
+   （8 个排成 7 + 1），列数由组件按选项数给。 */
+.instance-segmented.is-prominent.is-columns {
+  display: grid;
+  grid-template-columns: repeat(var(--segment-columns, 4), minmax(0, 1fr));
+}
+
+.instance-segmented.is-prominent.is-columns button {
+  min-width: 0;
+  padding: 0 8px;
+}
+
+/* 格子窄（手机）时每行两个。容器查询的那一层见 .setting-segment-slot；写在这里而不是那段里，
+   是因为同权重的规则后写的生效。 */
+@container setting-segment (max-width: 430px) {
+  .instance-segmented.is-prominent.is-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .instance-segmented.is-prominent button[data-active="true"] {
   border-color: color-mix(in srgb, var(--accent-500) 42%, var(--border));
   background: color-mix(in srgb, var(--accent-500) 9%, var(--surface-elev));
@@ -1788,6 +1828,11 @@ body::after {
   padding: 0 10px;
 }
 
+/* 和同一行的「断点连线」「刷新」按钮等高。 */
+.instance-chart-meta span {
+  min-height: 30px;
+}
+
 .instance-chart-meta strong {
   color: var(--text-primary);
   font-weight: 700;
@@ -1808,48 +1853,37 @@ body::after {
 
 .instance-chart-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* 8 张图（有磁盘 IO 时）：宽屏 4 × 2，中等宽度 2 × 4；3 列会剩一行只有两张。 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
+}
+
+@media (min-width: 1280px) {
+  .instance-chart-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .instance-chart-card {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--border-subtle) 88%, var(--chart-accent, var(--progress-cpu)) 12%);
+  /* 八张图同一个底色和描边（站长 2026-10-15）；各图的颜色只留在图标和线条上。 */
+  border: 1px solid var(--border-subtle);
   border-radius: 16px;
   padding: 11px 12px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--chart-accent, var(--progress-cpu)) 4%, var(--surface-elev) 96%) 0%,
-      color-mix(in srgb, var(--surface-elev) 94%, transparent) 100%
-    );
+  background: var(--surface-elev);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, white 10%, transparent),
     0 12px 28px -24px rgba(0, 0, 0, 0.45);
   transition:
     border-color 160ms ease,
-    background 160ms ease,
     transform 160ms ease;
-}
-
-.instance-chart-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 0 auto;
-  height: 2px;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--chart-accent, var(--progress-cpu)) 86%, transparent),
-    transparent
-  );
-  opacity: 0.75;
 }
 
 .instance-chart-card:hover {
   transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--border-strong) 70%, var(--chart-accent, var(--progress-cpu)) 30%);
+  border-color: var(--border-strong);
 }
 
 .instance-chart-card-head {
@@ -1857,12 +1891,46 @@ body::after {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  min-height: 38px;
+  /* 同一行几张图的绘图区要对齐：标题 + 图例、数值 + 说明、网络那张带箭头图标的说明，最高的是 42。 */
+  min-height: 42px;
   margin-bottom: 6px;
 }
 
 .instance-chart-card .instance-panel-subhead svg {
   color: var(--chart-accent, var(--progress-cpu));
+}
+
+.instance-chart-card-title {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.instance-chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.instance-chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.instance-chart-legend-swatch {
+  width: 10px;
+  height: 3px;
+  flex: 0 0 auto;
+  border-radius: 2px;
 }
 
 .instance-uplot-wrap {
@@ -2257,10 +2325,15 @@ body::after {
     border-radius: 16px;
   }
 
+  /* 原来还有 padding-right: 88px（Komari 移植时带过来的，右边早就没有要让开的东西了），
+     把标题行右侧的开关挤成一列，Ping 图头部在手机上有 200 多像素高。 */
   .instance-chart-panel .instance-panel-header {
     flex-direction: column;
     align-items: flex-start;
-    padding-right: 88px;
+  }
+
+  .instance-chart-headmeta {
+    justify-content: flex-start;
   }
 
   .instance-chart-grid {

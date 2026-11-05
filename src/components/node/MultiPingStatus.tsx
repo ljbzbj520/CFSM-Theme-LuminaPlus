@@ -1,3 +1,4 @@
+import { t } from "@/i18n";
 import { memo, useState } from "react";
 import { clsx } from "clsx";
 import { useMetricColorsVersion } from "@/hooks/useMetricColors";
@@ -36,17 +37,17 @@ const MultiPingMetricRow = memo(function MultiPingMetricRow({
   const staleError = isError && (line.lastValue != null || line.loss != null);
   const latencyLabel =
     isLoading && line.lastValue == null
-      ? "加载中"
+      ? t("card.pingLoading")
       : isError && line.lastValue == null
-        ? "加载失败"
+        ? t("card.pingFailed")
         : line.lastValue == null
-          ? "无样本"
+          ? t("card.pingNoSamples")
           : `${Math.round(line.lastValue)}ms`;
   const lossLabel =
     isLoading && line.loss == null
-      ? "加载中"
+      ? t("card.pingLoading")
       : isError && line.loss == null
-        ? "加载失败"
+        ? t("card.pingFailed")
         : line.loss == null
           ? "—"
           : `${line.loss.toFixed(1)}%`;
@@ -74,8 +75,8 @@ const MultiPingMetricRow = memo(function MultiPingMetricRow({
     <div
       className="multi-ping-metric-row"
       data-load-state={line.loadState ?? "ready"}
-      title={`${line.taskName} · 延迟 ${latencyLabel} · 丢包 ${lossLabel}${
-        staleError ? " · 刷新失败，显示上次数据" : ""
+      title={`${t("multi.rowTitle", { task: line.taskName, latency: latencyLabel, loss: lossLabel })}${
+        staleError ? t("multi.staleSuffix") : ""
       }`}
     >
       <div
@@ -139,7 +140,7 @@ const MultiPingMetricColumn = memo(function MultiPingMetricColumn({
   return (
     <div
       className="multi-ping-metric-column"
-      aria-label={metric === "latency" ? "延迟" : "丢包"}
+      aria-label={t(metric === "latency" ? "card.latency" : "card.loss")}
     >
       {lines.map((line, slot) => (
         // 按行号当 key，不按线路 id：访客在这一行换了线路（PingLineSwitcher）后还是同一行、
@@ -177,7 +178,7 @@ export const MultiPingStatus = memo(function MultiPingStatus({
     <div
       className={clsx("multi-ping-status", `is-${density}`, className)}
       role="group"
-      aria-label="各线路延迟与丢包"
+      aria-label={t("multi.groupLabel")}
     >
       <div className="multi-ping-columns">
         <MultiPingMetricColumn
