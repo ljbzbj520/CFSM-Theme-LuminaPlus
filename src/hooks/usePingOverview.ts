@@ -147,8 +147,8 @@ export function buildPingOverviewItem(
   const emptyTimes: number[] = [];
   let max = 1;
   let lastValue: number | null = null;
-  // 丢包率取整段窗口的加权平均，和柱状图同源（缓冲区本身就只保留一小时）。
-  // 取最后一个样本会让「6 个包丢 1 个」这种单次抖动直接顶成 16%，而柱子还是全绿。
+  // 丢包率取整个缓冲区的加权平均（取最后一个样本会让「6 个包丢 1 个」直接顶成 16%）。
+  // 卡片上显示的不是这个，是 useNodeCardModel 用 `lossFromBuckets` 按柱子重算的：缓冲区比柱子多留 15 分钟。
   let lostSum = 0;
   let lossWeight = 0;
 
@@ -494,7 +494,9 @@ export function buildPingBuckets(
   offlineSince?: number | null,
   windowMs?: number,
 ): PingOverviewBucket[] {
-  const offlineAt = resolveOfflineSince(offlineSince);
+  // 掉线分界取节点最后的样本时间；时钟快的节点这个时间在将来（站长 2026-10-26 PQS-tw 快了近 8 小时），不夹住就一格红的都没有。
+  const resolvedOfflineAt = resolveOfflineSince(offlineSince);
+  const offlineAt = resolvedOfflineAt == null ? null : Math.min(resolvedOfflineAt, now);
   const totalWindowMs = resolvePingWindowMs(ping, offlineAt, now, windowMs);
   const requestedCount = count ?? HOMEPAGE_PING_BUCKET_COUNT;
   const boundedRequestedCount =
@@ -647,6 +649,21 @@ export function buildPingBuckets(
       offline: offlineAt != null && startAt >= offlineAt,
     };
   });
+}
+
+/**
+ * 按柱子算整段丢包率：各格按样本份数加权（`loss` 是格内百分比，乘回 `total` 就是丢失份数）。
+ * 掉线格没有样本，不参与。这样数字一定落在柱子颜色的范围里。
+ */
+export function lossFromBuckets(buckets: readonly PingOverviewBucket[]): number | null {
+  let lost = 0;
+  let total = 0;
+  for (const bucket of buckets) {
+    if (bucket.loss == null || !Number.isFinite(bucket.loss) || bucket.total <= 0) continue;
+    lost += (bucket.loss / 100) * bucket.total;
+    total += bucket.total;
+  }
+  return total > 0 ? (lost / total) * 100 : null;
 }
 
 export function usePingBuckets(

@@ -4,9 +4,11 @@ import UplotReact from "uplot-react";
 import type uPlot from "uplot";
 import { Eye, EyeOff, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { usePingRecords } from "@/hooks/useRecords";
-import { useNodeMeta } from "@/hooks/useNode";
+import { useNodeMeta, useShowThreeNetDetails } from "@/hooks/useNode";
 import { useCarrierNames } from "@/hooks/usePublicConfig";
+import { useNodeMultiPingTaskIds } from "@/hooks/usePingOverview";
 import { useThemeSettings } from "@/hooks/useThemeSettings";
+import { isHomepageMultiPingConfigured, orderTasksByCardLines } from "@/utils/pingTasks";
 import { carrierTaskName, resolveCarrierNames } from "@/services/cfsm/mappers";
 import { InstancePanel, InstanceChartLoading } from "./InstancePanel";
 import {
@@ -201,6 +203,8 @@ export function resolvePingYRange({
   return [finalMin, finalMax];
 }
 
+const EMPTY_CARD_ORDER: readonly number[] = [];
+
 export function PingChart({
   uuid,
   hours,
@@ -275,7 +279,16 @@ export function PingChart({
   // 线路名以单机自定义名或 `/api/config` 的自定义名为准：历史查询是按 uuid+hours 缓存的，站长改名
   // （或 config 晚于历史返回）不会让那份缓存重算，所以在这里按当前名字重新贴一遍。
   const carrierNames = useCarrierNames();
-  const { serverCarrierNames } = useThemeSettings();
+  // 线路顺序跟这台节点卡片上的多线路顺序走（issue #13：卡片能调顺序，图表原来固定电信、联通、移动）。
+  // 口径和卡片同一份（站点设置 → 逐节点换线 → 本机换线）；单线路模式卡片没有顺序，照接口顺序。
+  // 颜色仍按位置给，排第一的永远是同一个颜色，默认顺序下和原来一模一样。
+  const { serverCarrierNames, enableHomepageMultiPing } = useThemeSettings();
+  const showThreeNetDetails = useShowThreeNetDetails();
+  const nodeCardTaskIds = useNodeMultiPingTaskIds(uuid);
+  const cardOrder =
+    enableHomepageMultiPing && showThreeNetDetails && isHomepageMultiPingConfigured(nodeCardTaskIds)
+      ? nodeCardTaskIds
+      : EMPTY_CARD_ORDER;
   const nodeMeta = useNodeMeta(uuid);
   const resolvedCarrierNames = useMemo(() => {
     const custom = serverCarrierNames?.[uuid];
@@ -284,14 +297,13 @@ export function PingChart({
     }
     return resolveCarrierNames(nodeMeta?.carrierNames, carrierNames);
   }, [carrierNames, serverCarrierNames, uuid, nodeMeta?.carrierNames]);
-  // API 顺序与后台任务权重一致，响应本身不一定包含可重排的权重。
   const tasks = useMemo(
     () =>
-      (data?.tasks ?? []).map((task) => ({
+      orderTasksByCardLines(data?.tasks ?? [], cardOrder).map((task) => ({
         ...task,
         name: carrierTaskName(task.id, resolvedCarrierNames),
       })),
-    [data?.tasks, resolvedCarrierNames],
+    [cardOrder, data, resolvedCarrierNames],
   );
   const taskLabels = useMemo(() => {
     const counts = new Map<string, number>();
